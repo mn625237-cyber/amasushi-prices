@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اسعار التوصيل - اما سوشي</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+        }
+        .app-container {
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* تنسيق اللوجو */
+        .app-logo {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            border: 3px solid #e67e22;
+            object-fit: cover;
+            margin-bottom: 15px;
+            margin-top: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        /* تنسيق العنوان والموتوسيكل */
+        h1 {
+            color: #e67e22;
+            font-size: 20px;
+            margin: 0 0 5px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .moto-icon {
+            font-size: 1.4em;
+        }
+
+        .sub-title {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 18px;
+            font-size: 18px;
+            border: 2px solid #e67e22;
+            border-radius: 50px;
+            box-sizing: border-box;
+            margin-bottom: 20px;
+            outline: none;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(230, 126, 34, 0.2);
+            font-family: inherit;
+        }
+
+        .results-container {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 10px;
+            min-height: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            width: 100%;
+        }
+
+        .result-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f1f1f1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .area-info { text-align: right; flex: 1; }
+        .area-name { font-weight: 700; color: #2c3e50; font-size: 16px; display: block; }
+        .area-en { color: #95a5a6; font-size: 11px; }
+        
+        .price-tag {
+            background: #27ae60;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            min-width: 85px;
+        }
+        .price-label { font-size: 9px; display: block; font-weight: normal; margin-bottom: 2px; }
+        .no-data { color: #bdc3c7; margin-top: 150px; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <img src="logo.jpg" alt="لوجو اما سوشي" class="app-logo">
+
+    <h1><span class="moto-icon">🛵</span> اسعار التوصيل واماكن التغطية</h1>
+    <div class="sub-title">اما سوشي التجمع الخامس</div>
+    
+    <input type="text" id="searchInput" class="search-box" placeholder="ابحث عن منطقة (مثلاً: ميفيدا أو اللوتس)" oninput="runSearch()">
+
+    <div class="results-container" id="resultsBox">
+        <div class="no-data">اكتب اسم المكان لتعرف سعر خدمة الطيار..</div>
+    </div>
+</div>
+
+<script>
+// دالة تنظيف النصوص لتسهيل البحث
+function normalizeArabic(text) {
+    if (!text) return "";
+    return text.toString()
+        .replace(/[أإآا]/g, 'ا')
+        .replace(/[ىي]/g, 'ي')
+        .replace(/ة/g, 'ه')
+        .replace(/\s+/g, '')
+        .toLowerCase();
+}
+
+// البيانات الكاملة من الملف
+const rawData = `المنطقة 5,District 5,75
+كمبوند لو ريف – القطامية,LE Reve Compound - Katameya,65
+المستثمرين الجنوبية - كمبوند النافورة الزرقاء,South Investors - Fountain Blue,65
+المستثمرين الجنوبية - كمبوند المستشارين,South Investors - Elmostashareen,65
+سوديك ايست تاون,Sodic Eastown,65
+المستثمرين الشمالية - كمبوند بلاجيو,North Investors - Bellagio,65
+مستثمرو الجنوب - كمبوند العربي,South Investors - ElAraby,65
+المستثمرين الشمالية - ريفر ووك,North Investors - River Walk,65
+التجمع الثالث - المنطقة الرابعة,Third Settlement - District 4,65
+المستثمرين الشمالية - كمبوند الباتيو,North Investors - El Patio,65
+مستثمرو الجنوب - زيزينيا,South Investors - Zizinia,75
+المستثمرين الشمالية - فلل ذا واتر واي,The Waterway Villas,65
+سوديك - كمبوند فيليت,Sodic - Villette Compound,80
+المستثمرين الجنوبية - كمبوند لا تيرا,South Investors - La Tera,65
+كمبوند سوان ليك,Swan Lake Compound,65
+محكمة القاهرة الجديدة,New Cairo Court,65
+النرجس 8,El Narges 8,60
+سيفورا هايتس,Sephora Heights,80
+غرب ارابيلا,West Arabila,60
+بيت الوطن الشمالي,Bayet Elwatan North,95
+المستثمرين الشمالية - كمبوند حياتي ريزيدنس,Hayati Residence,65
+مدينة ميراج,Mirage City,65
+الياسمين 1&2,EL Yasmeen 1 & 2,50
+ماونتن فيو آي سيتي,Mountain View iCity,75
+وادي دجلة ونادي بلاتينيوم,Wadi Degla & Platinum Club,75
+المستثمرين الشمالية - ذا كورنر مول,The Corner Mall,75
+الأندلس,Al Andalus,90
+التجمع الثالث - المنطقة الثانية,Third settlement - District 2,65
+مربع ذهبي واحد,One Golden Square,80
+كمبوند جاليريا مون فالي,Galleria moon valley,75
+اكاديمية الجنوب,South Acadamy,45
+إسكان الشباب جنوباً,Eskan ElShbab south,65
+ماونتن فيو 2,Mountain View 2,80
+مينا ريزيدنس,Mena Residence,65
+إطلالة على البحيرة,Lake View,65
+كمبوند الباتيو 7,El - Patio 7 Compound,75
+كمبوند فيلار,Villar Compound,65
+سيرينا هايتس,Serena Heights,65
+النرجس الجديدة,New Narges,65
+كمبوند جناتي,Janaty Compound,65
+مساكن أسوار,Aswar Residences,80
+مجمع اكويا,Akoya Compound,65
+كمبوند لاجو فيستا,Lago Vista compound,65
+القطامية,El Katameya,65
+كونكورد بلازا,Concord Plaza,65
+كمبوند الأصيل,Al Asil Compound,65
+عائلات زيزينيا,Zizinia Families,65
+شركة سانت 90,St 90 Companies,60
+إيتوال دي فيلز,Etoile Des Villes,65
+كمبوند تمر حنة,Tamr Hena Compound,75
+غرب الجولف - القطامية,West Golf - Katameya,65
+التجمع الثالث - ساكن مصر,Third Settlement - Sakn Masr,75
+البنفسج 7 و 8,El Banafseg 7 & 8,60
+سوان ليك ريزيدنس,Swan Lake Residence,65
+كمبوند طيبة,Tiba Compound,65
+الحياة,Al Haya,65
+كازا فيردي,Caza Verdi Compound,65
+الياسمين 6 و 7,EL Yasmeen 6 & 7,50
+البنفسج 9 و 10,El Banafseg 9 & 10,50
+سيزونز ريزيدنس,Seasons Residence,75
+كمبوند البستان,Al Bustan Compound,65
+جاردينيا سبرينجز,Gardenia Springs,65
+زهرة التجمع,Zahret El-Tagamoe,65
+الجزيرة جرين بارك,Al Guezira Green Park,75
+منطقة الجامعة والمدارس,UNIV & Schools Area,65
+مجمع ذا سكوير,The Square Compound,80
+الياسمين 5 و 6,EL Yasmeen 5 & 6,50
+فيلات الشربتلي,Al Sharbatly Villas,65
+النرجس 2,El Narges 2,50
+النرجس 5,El Narges 5,50
+التجمع الأول - الأحياء,First Settlements - Neighborhoods,50
+كمبوند اميرالد بارك,Emerald Park Compound,65
+امتدادات النرجس,El Narges Extensions,65
+التجمع الخامس - المنطقة الأولى,Fifth Settlement - District 1,50
+الياسمين 3 و 4,EL Yasmeen 3 & 4,50
+هايد بارك,Hyde Park,90
+اللوتس المركزية,Central Lotus,70
+حي الروضة,El Rawda Disrtict,95
+الدبلوماسيين,EL - Diplomaseen,60
+جنوب بيت الوطن,South Bayet Elwatan,95
+كمبوند مون فالي,Compound Moon Vally,65
+بالم هيلز القطامية,Palm Hills Katameya Club,65
+التجمع الثالث - الحي الأول,Third sttlement - District 1,60
+كمبوند سمارت لايف,Smart life Compound,65
+القطامية - الطريق الدائري,Katameya - Ring Road,70
+فيلات القرنفل,EL-Koronfol Villas,70
+مستثمرو الجنوب - آل ياسر,Aal Yasser,65
+النرجس 7,El Narges 7,50
+وسط البلد - مركز البنوك,Downtown - Banks Center,40
+درة القاهرة,Durrat Al Qahira,65
+الناعب العام,Al Naa'b Al Aam,70
+الممر المائي,Waterway,65
+البنفسج 3 و 4,El Banafseg 3 & 4,65
+كمبوند المصراوية,Compound El- Masrawia,65
+طيبة روز,Tiba Rose,65
+الشويفات,Chouifat,50
+النادي الاهلي,Al Ahly Club,75
+سكن مصر - كمبوند,Sakan Masr - Compound,75
+النرجس 3,El Narges 3,50
+جراند ريزيدنس,Grand Residence,65
+مساكن الأشرفية,Ashrafeya Residence,65
+الممر المائي الأبيض,Waterway White,65
+أرابيلا وGUC,Arabila & GUC,65
+القطامية بلازا - سوديك,Kattameya Plaza - SODIC,65
+فيفث سكوير المراسم,Fifth Square Al Marasem,80
+كمبوند ذا فيلا الدورة,The Villa Compound Dora,65
+التجمع الأول - إسكان الشباب,First Settlement - Eskan ElShbab,65
+كمبوند جراند سيزار,Grand Cesar Compound,65
+كمبوند ريتاج,Ritag Compound,65
+الجامعة الأمريكية نقطة 90,AUC Point 90,70
+لوتس الشمالية,Northen Lotus,70
+القطامية جاردنز,Katameya Gardens,70
+البنفسج 5 و 6,El Banafseg 5 & 6,65
+كمبوند الشروق,Sunrise Compound,65
+مجمع في جي كيه,VGK Compound,80
+سي اف سي,CFC,50
+كمبوند ذا كيو اند لا كينتا,The Q & La Quinta,65
+الربوة - القاهرة الجديدة,Rabwa - New Cairo,75
+نادي الزهور,Al Zuhour Club,65
+حديقة النافورة,Fountain Park,65
+كمبوند ميفيدا,Mivida Compound,80
+التجمع الثالث - المنطقة السادسة,Third Settlement - District 6,60
+منطقة خدمات البنفسج,El Banafseg Services Area,65
+الجامعة الأمريكية,AUC,65
+المنطقة الصناعية,industrial zone,75
+النرجس 1,El Narges 1,50
+ديار,Dyar,65
+كمبوند دار مصر,Dar Masr Compound,80
+اللوتس الجنوبية,Southern Lotus,65
+قطامية بالمز,Kattameya Palms,75
+حديقة الزهور,Flowers Park,65
+منتجع النخيل,Palm Resort,65
+كمبوند جانا مصر,Gana Masr Compound,75
+ماونتن فيو 1,Mountain View 1,75
+لافي وهايتس ريفييرا,La Vie & Riviera Hights,65
+جاردينيا هايتس,Gardinia Heights,75
+مدينة الصحفيين,Madinet El Sahafyeen,65
+إسكان الحرية,El Horia Housing,65
+الأمن العام,Al Amn Elaam,65
+هليو بارك,Helio Park - Suez Rd,80
+البنفسج 11 و 12,El Banafseg 11 & 12,50
+البنفسج 1 و 2,El Banafseg 1 & 2,65
+كمبوند ستيلا,Stella Compound,65
+كمبوند ميدتاون ولاروا,Midtown & La Rois,65
+القطامية هايتس,Katameya Heights,65
+كمبوند مكسيم,Maxim Compound,65
+فاميلي سيتي,Family City,65
+النرجس 4,El Narges 4,50
+التجمع الثالث - المنطقة السابعة,Third Settlement - District 7,65
+كمبوند بارادايس القطامية,Paradise Katameya,75
+أكاديمية الشرق,East Academy,50
+النرجس 6,El Narges 6,50
+كمبوند ليه روا,Les Rois Compound,65
+القطامية ديونز,Katameya Dunes,70
+الرحاب ١,Rehab 1,80
+الرحاب ٢,Rehab 2,80
+جنة مصر,Gana Masr,95
+مدينتي,Madinaty,120
+محور محمد نجيب,Mohamed Naguib,125`;
+
+const deliveryData = rawData.trim().split('\n').map(line => {
+    const parts = line.split(',');
+    return {
+        ar: parts[0] ? parts[0].trim() : "",
+        en: parts[1] ? parts[1].trim() : "",
+        price: parts[2] ? parts[2].trim() : "",
+        searchKey: normalizeArabic((parts[0] || "") + (parts[1] || "") + (parts[2] || ""))
+    };
+});
+
+function runSearch() {
+    const query = normalizeArabic(document.getElementById('searchInput').value);
+    const resultsBox = document.getElementById('resultsBox');
+    
+    if (query === "") {
+        resultsBox.innerHTML = '<div class="no-data">اكتب اسم المكان لتعرف سعر خدمة الطيار..</div>';
+        return;
+    }
+
+    const filtered = deliveryData.filter(item => item.searchKey.includes(query));
+
+    if (filtered.length > 0) {
+        resultsBox.innerHTML = filtered.map(item => `
+            <div class="result-item">
+                <div class="area-info">
+                    <span class="area-name">${item.ar}</span>
+                    <span class="area-en">${item.en}</span>
+                </div>
+                <div class="price-tag">
+                    <span class="price-label">خدمة الطيار</span>
+                    ${item.price} ج.م
+                </div>
+            </div>
+        `).join('');
+    } else {
+        resultsBox.innerHTML = '<div class="no-data">لم نجد هذا المكان.. جرب كتابته بشكل مختلف 🔍</div>';
+    }
+}
+</script>
+
+</body>
+</html>
