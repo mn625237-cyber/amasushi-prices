@@ -32,7 +32,7 @@
             flex-direction: column;
             align-items: center;
         }
-        
+
         /* تنسيق اللوجو */
         .app-logo {
             width: 110px;
@@ -64,7 +64,7 @@
             font-size: 14px;
             margin-bottom: 25px;
         }
-        
+
         /* تنسيق مربع البحث والمايك */
         .search-wrap {
             position: relative;
@@ -135,8 +135,18 @@
 
         .area-info { text-align: right; flex: 1; }
         .area-name { font-weight: 700; color: #2c3e50; font-size: 16px; display: block; }
-        .area-en { color: #95a5a6; font-size: 11px; }
-        
+        .area-en { color: #95a5a6; font-size: 11px; display: block; }
+        .row-number {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-top: 4px;
+        }
+
         .price-tag {
             background: #27ae60;
             color: white;
@@ -157,7 +167,7 @@
 
     <h1><span class="moto-icon">🛵</span> اسعار التوصيل واماكن التغطية</h1>
     <div class="sub-title">اما سوشي التجمع الخامس</div>
-    
+
     <div class="search-wrap">
         <input type="text" id="searchInput" class="search-box" placeholder="ابحث عن منطقة (مثلاً: ميفيدا)" oninput="runSearch()">
         <button id="micBtn" class="mic-btn" onclick="startVoiceSearch()">🎤</button>
@@ -180,182 +190,211 @@ function normalizeArabic(text) {
         .toLowerCase();
 }
 
-// البيانات الكاملة من الملف
-const rawData = `المنطقة 5,District 5,75
-كمبوند لو ريف – القطامية,LE Reve Compound - Katameya,65
-المستثمرين الجنوبية - كمبوند النافورة الزرقاء,South Investors - Fountain Blue,65
-المستثمرين الجنوبية - كمبوند المستشارين,South Investors - Elmostashareen,65
-سوديك ايست تاون,Sodic Eastown,65
-المستثمرين الشمالية - كمبوند بلاجيو,North Investors - Bellagio,65
-مستثمرو الجنوب - كمبوند العربي,South Investors - ElAraby,65
-المستثمرين الشمالية - ريفر ووك,North Investors - River Walk,65
-التجمع الثالث - المنطقة الرابعة,Third Settlement - District 4,65
-المستثمرين الشمالية - كمبوند الباتيو,North Investors - El Patio,65
-مستثمرو الجنوب - زيزينيا,South Investors - Zizinia,75
-المستثمرين الشمالية - فلل ذا واتر واي,The Waterway Villas,65
-سوديك - كمبوند فيليت,Sodic - Villette Compound,80
-المستثمرين الجنوبية - كمبوند لا تيرا,South Investors - La Tera,65
-كمبوند سوان ليك,Swan Lake Compound,65
-محكمة القاهرة الجديدة,New Cairo Court,65
-النرجس 8,El Narges 8,60
-سيفورا هايتس,Sephora Heights,80
-غرب ارابيلا,West Arabila,60
-بيت الوطن الشمالي,Bayet Elwatan North,95
-المستثمرين الشمالية - كمبوند حياتي ريزيدنس,Hayati Residence,65
-مدينة ميراج,Mirage City,65
-الياسمين 1&2,EL Yasmeen 1 & 2,50
-ماونتن فيو آي سيتي,Mountain View iCity,75
-وادي دجلة ونادي بلاتينيوم,Wadi Degla & Platinum Club,75
-المستثمرين الشمالية - ذا كورنر مول,The Corner Mall,75
-الأندلس,Al Andalus,90
-التجمع الثالث - المنطقة الثانية,Third settlement - District 2,65
-مربع ذهبي واحد,One Golden Square,80
-كمبوند جاليريا مون فالي,Galleria moon valley,75
-اكاديمية الجنوب,South Acadamy,45
-إسكان الشباب جنوباً,Eskan ElShbab south,65
-ماونتن فيو 2,Mountain View 2,80
-مينا ريزيدنس,Mena Residence,65
-إطلالة على البحيرة,Lake View,65
-كمبوند الباتيو 7,El - Patio 7 Compound,75
-كمبوند فيلار,Villar Compound,65
-سيرينا هايتس,Serena Heights,65
-النرجس الجديدة,New Narges,65
-كمبوند جناتي,Janaty Compound,65
-مساكن أسوار,Aswar Residences,80
-مجمع اكويا,Akoya Compound,65
-كمبوند لاجو فيستا,Lago Vista compound,65
-القطامية,El Katameya,65
-كونكورد بلازا,Concord Plaza,65
-كمبوند الأصيل,Al Asil Compound,65
-عائلات زيزينيا,Zizinia Families,65
-شركة سانت 90,St 90 Companies,60
-إيتوال دي فيلز,Etoile Des Villes,65
-كمبوند تمر حنة,Tamr Hena Compound,75
-غرب الجولف - القطامية,West Golf - Katameya,65
-التجمع الثالث - ساكن مصر,Third Settlement - Sakn Masr,75
-البنفسج 7 و 8,El Banafseg 7 & 8,60
-سوان ليك ريزيدنس,Swan Lake Residence,65
-كمبوند طيبة,Tiba Compound,65
-الحياة,Al Haya,65
-كازا فيردي,Caza Verdi Compound,65
-الياسمين 6 و 7,EL Yasmeen 6 & 7,50
-البنفسج 9 و 10,El Banafseg 9 & 10,50
-سيزونز ريزيدنس,Seasons Residence,75
-كمبوند البستان,Al Bustan Compound,65
-جاردينيا سبرينجز,Gardenia Springs,65
-زهرة التجمع,Zahret El-Tagamoe,65
-الجزيرة جرين بارك,Al Guezira Green Park,75
-منطقة الجامعة والمدارس,UNIV & Schools Area,65
-مجمع ذا سكوير,The Square Compound,80
-الياسمين 5 و 6,EL Yasmeen 5 & 6,50
-فيلات الشربتلي,Al Sharbatly Villas,65
-النرجس 2,El Narges 2,50
-النرجس 5,El Narges 5,50
-التجمع الأول - الأحياء,First Settlements - Neighborhoods,50
-كمبوند اميرالد بارك,Emerald Park Compound,65
-امتدادات النرجس,El Narges Extensions,65
-التجمع الخامس - المنطقة الأولى,Fifth Settlement - District 1,50
-الياسمين 3 و 4,EL Yasmeen 3 & 4,50
-هايد بارك,Hyde Park,90
-اللوتس المركزية,Central Lotus,70
-حي الروضة,El Rawda Disrtict,95
-الدبلوماسيين,EL - Diplomaseen,60
-جنوب بيت الوطن,South Bayet Elwatan,95
-كمبوند مون فالي,Compound Moon Vally,65
-بالم هيلز القطامية,Palm Hills Katameya Club,65
-التجمع الثالث - الحي الأول,Third sttlement - District 1,60
-كمبوند سمارت لايف,Smart life Compound,65
-القطامية - الطريق الدائري,Katameya - Ring Road,70
-فيلات القرنفل,EL-Koronfol Villas,70
-مستثمرو الجنوب - آل ياسر,Aal Yasser,65
-النرجس 7,El Narges 7,50
-وسط البلد - مركز البنوك,Downtown - Banks Center,40
-درة القاهرة,Durrat Al Qahira,65
-الناعب العام,Al Naa'b Al Aam,70
-الممر المائي,Waterway,65
-البنفسج 3 و 4,El Banafseg 3 & 4,65
-كمبوند المصراوية,Compound El- Masrawia,65
-طيبة روز,Tiba Rose,65
-الشويفات,Chouifat,50
-النادي الاهلي,Al Ahly Club,75
-سكن مصر - كمبوند,Sakan Masr - Compound,75
-النرجس 3,El Narges 3,50
-جراند ريزيدنس,Grand Residence,65
-مساكن الأشرفية,Ashrafeya Residence,65
-الممر المائي الأبيض,Waterway White,65
-أرابيلا وGUC,Arabila & GUC,65
-القطامية بلازا - سوديك,Kattameya Plaza - SODIC,65
-فيفث سكوير المراسم,Fifth Square Al Marasem,80
-كمبوند ذا فيلا الدورة,The Villa Compound Dora,65
-التجمع الأول - إسكان الشباب,First Settlement - Eskan ElShbab,65
-كمبوند جراند سيزار,Grand Cesar Compound,65
-كمبوند ريتاج,Ritag Compound,65
-الجامعة الأمريكية نقطة 90,AUC Point 90,70
-لوتس الشمالية,Northen Lotus,70
-القطامية جاردنز,Katameya Gardens,70
-البنفسج 5 و 6,El Banafseg 5 & 6,65
-كمبوند الشروق,Sunrise Compound,65
-مجمع في جي كيه,VGK Compound,80
-سي اف سي,CFC,50
-كمبوند ذا كيو اند لا كينتا,The Q & La Quinta,65
-الربوة - القاهرة الجديدة,Rabwa - New Cairo,75
-نادي الزهور,Al Zuhour Club,65
-حديقة النافورة,Fountain Park,65
-كمبوند ميفيدا,Mivida Compound,80
-التجمع الثالث - المنطقة السادسة,Third Settlement - District 6,60
-منطقة خدمات البنفسج,El Banafseg Services Area,65
-الجامعة الأمريكية,AUC,65
-المنطقة الصناعية,industrial zone,75
-النرجس 1,El Narges 1,50
-ديار,Dyar,65
-كمبوند دار مصر,Dar Masr Compound,80
-اللوتس الجنوبية,Southern Lotus,65
-قطامية بالمز,Kattameya Palms,75
-حديقة الزهور,Flowers Park,65
-منتجع النخيل,Palm Resort,65
-كمبوند جانا مصر,Gana Masr Compound,75
-ماونتن فيو 1,Mountain View 1,75
-لافي وهايتس ريفييرا,La Vie & Riviera Hights,65
-جاردينيا هايتس,Gardinia Heights,75
-مدينة الصحفيين,Madinet El Sahafyeen,65
-إسكان الحرية,El Horia Housing,65
-الأمن العام,Al Amn Elaam,65
-هليو بارك,Helio Park - Suez Rd,80
-البنفسج 11 و 12,El Banafseg 11 & 12,50
-البنفسج 1 و 2,El Banafseg 1 & 2,65
-كمبوند ستيلا,Stella Compound,65
-كمبوند ميدتاون ولاروا,Midtown & La Rois,65
-القطامية هايتس,Katameya Heights,65
-كمبوند مكسيم,Maxim Compound,65
-فاميلي سيتي,Family City,65
-النرجس 4,El Narges 4,50
-التجمع الثالث - المنطقة السابعة,Third Settlement - District 7,65
-كمبوند بارادايس القطامية,Paradise Katameya,75
-أكاديمية الشرق,East Academy,50
-النرجس 6,El Narges 6,50
-كمبوند ليه روا,Les Rois Compound,65
-القطامية ديونز,Katameya Dunes,70
-الرحاب ١,Rehab 1,80
-الرحاب ٢,Rehab 2,80
-جنة مصر,Gana Masr,95
-مدينتي,Madinaty,120
-محور محمد نجيب,Mohamed Naguib,125
-نبيل,,300`;
+// البيانات الكاملة من الملف مع رقم الصف
+const rawData = `2,المنطقة 5,District 5,75
+3,كمبوند لو ريف – القطامية,LE Reve Compound - Katameya,65
+4,المستثمرين الجنوبية - كمبوند النافورة الزرقاء,South Investors - Fountain Blue Compound,65
+5,المستثمرين الجنوبية - كمبوند المستشارين,South Investors - Elmostashareen Compound,65
+6,سوديك ايست تاون,Sodic Eastown,65
+7,المستثمرين الشمالية - كمبوند بلاجيو,North Investors - Bellagio Compound,65
+8,مستثمرو الجنوب - كمبوند العربي,South Investors - ElAraby Compound,65
+9,المستثمرين الشمالية - ريفر ووك,North Investors - River Walk,65
+10,التجمع الثالث - المنطقة الرابعة,Third Settlement - District 4,65
+11,المستثمرين الشمالية - كمبوند الباتيو,North Investors - El Patio Compound,65
+12,مستثمرو الجنوب - زيزينيا,South Investors - Zizinia,75
+13,المستثمرين الشمالية - فلل ذا واتر واي,EXT North Investors - The Waterway Villas,65
+14,سوديك - كمبوند فيليت,Sodic - Villette Compound,80
+15,المستثمرين الجنوبية - كمبوند لا تيرا,South Investors - La Tera Compound,65
+16,كمبوند سوان ليك,Swan Lake Compound,65
+17,محكمة القاهرة الجديدة,New Cairo Court,65
+18,النرجس 8,El Narges 8,60
+19,سيفورا هايتس,Sephora Heights,80
+20,غرب ارابيلا,West Arabila,60
+21,بيت الوطن الشمالي,Bayet Elwatan North,95
+22,المستثمرين الشمالية - كمبوند حياتي ريزيدنس,North Investors - Hayati Residence Compound,65
+23,مدينة ميراج,Mirage City,65
+24,الياسمين 1&2,EL Yasmeen 1 &2,50
+25,ماونتن فيو آي سيتي - القاهرة الجديدة,Mountain View iCity - New Cairo,75
+26,وادي دجلة ونادي بلاتينيوم,Wadi Degla & Platinum Club,75
+27,المستثمرين الشمالية - ذا كورنر مول وكمبوند فيلينو,North Investors - The Corner Mall & Villino Compound,75
+28,الأندلس,Al Andalus,90
+29,التجمع الثالث - المنطقة الثانية,Third settlement - District 2,65
+30,مربع ذهبي واحد,One Golden Square,80
+31,كمبوند جاليريا مون فالي,Galleria moon valley Compound,75
+32,اكاديمية الجنوب,South Acadamy,45
+33,التجمع الأول - إسكان الشباب جنوباً,First Settlement - Eskan ElShbab south,65
+34,ماونتن فيو 2,Mountain View 2,80
+35,المستثمرين الجنوبية - كمبوند مينا ريزيدنس,South Investors - Mena Residence Compound,65
+36,إطلالة على البحيرة,Lake View,65
+37,كمبوند الباتيو 7,El - Patio 7 Compound,75
+38,المستثمرين الشمالية - كمبوند فيلار,North Investors - Villar Compound,65
+39,المستثمرين الشمالية - سيرينا هايتس,North Investors - Serena Heights,65
+40,النرجس الجديدة - الغابة المتحجرة,New Narges - Al Ghabat Al Motahgera,65
+41,المستثمرين الجنوبية - كمبوند جناتي,South Investors - Janaty Compound,65
+42,مساكن أسوار,Aswar Residences,80
+43,مجمع اكويا,Akoya Compound,65
+44,المستثمرين الشمالية - كمبوند لاجو فيستا,North Investors - Lago Vista compound,65
+45,القطامية,El Katameya,65
+46,كونكورد بلازا,Concord Plaza,65
+47,مستثمرو الجنوب - كمبوند الأصيل,South Investors - Al Asil Compound,65
+48,مستثمرو الجنوب - عائلات زيزينيا,South Investors - Zizinia Families,65
+49,المستثمرين الشمالية - كمبوند المستشارين,North Investors - Compound Al Mostashareen,65
+50,شركة سانت 90,St 90 Companies,60
+51,المستثمرين الشمالية - كمبوند إيتوال دي فيلز,North Investors - Etoile Des Villes Compound,65
+52,كمبوند تمر حنة,Tamr Hena Compound,75
+53,المستثمرين الشمالية - كمبوند ريفر ووك ووادي دجلة,North Investors - River Walk, Wadi Degla Compund,65
+54,غرب الجولف - القطامية,West Golf - Katameya,65
+55,المستثمرين الشمالية - كمبوند لاجو فيستا,North Investors - Lago Vista Compound,65
+56,التجمع الثالث - ساكن مصر,Third Settlement - Sakn Masr,75
+57,البنفسج 7 و 8,El Banafseg 7 & 8,60
+58,سوان ليك ريزيدنس,Swan Lake Residence,65
+59,المستثمرين الجنوبية - كمبوند طيبة,South Investors - Tiba Compound,65
+60,EXT North Investors - الحياة,EXT North Investors - Al Haya,65
+61,المستثمرين الشمالية - كمبوند كازا فيردي,North Investors - Caza Verdi Compound,65
+62,الياسمين 6 و 7,EL Yasmeen 6 & 7,50
+63,البنفسج 9 و 10,El Banafseg 9 & 10,50
+64,EXT North Investors - كمبوند سيزونز ريزيدنس,EXT North Investors - Seasons Residence Compound,75
+65,المستثمرين الشمالية - كمبوند البستان,North Investors - Al Bustan Compound,65
+66,EXT North Investors - جاردينيا سبرينجز,EXT North Investors - Gardenia Springs,65
+67,المستثمرين الشمالية - زهرة التجمع,North Investors - Zahret El-Tagamoe,65
+68,مستثمرو الجنوب - مجمع الجزيرة جرين بارك السكني,South Investors - Al Guezira Green Park Residential Compound,75
+69,منطقة الجامعة والمدارس,UNIV & Schools Area,65
+70,مجمع ذا سكوير,The Square Compound,80
+71,الياسمين 5 و 6,EL Yasmeen 5 & 6,50
+72,فيلات الشربتلي,Al Sharbatly Villas,65
+73,النرجس 2,El Narges 2,50
+74,النرجس 5,El Narges 5,50
+75,مستثمرو الجنوب - نادي التغذية الاجتماعية,South Investors - Nadi Al Taa'menat Al Egtmaaya,65
+76,كمبوند دورا الكرز,Dora El Kraz Compound,65
+77,التجمعات الأولى - الأحياء,First Settlements - Neighborhoods,50
+78,EXT North Investors - كمبوند اميرالد بارك,EXT North Investors - Emerald Park Compound,65
+79,امتدادات النرجس,El Narges Extensions,65
+80,التجمع الخامس - المنطقة الأولى,Fifth Settlement - District 1,50
+81,الياسمين 3 و 4,EL Yasmeen 3 & 4,50
+82,ماونتن فيو - هايد بارك,Mountain View - Hyde Park,90
+83,التجمع الخامس - المنطقة الرابعة,Fifth Settlement - District 4,50
+84,التجمع الخامس - المنطقة الخامسة,Fifth Settlement - District 5,50
+85,اللوتس المركزية,Central Lotus,70
+86,حي الروضة,El Rawda Disrtict,95
+87,إل - الدبلوماسيين,EL - Diplomaseen,60
+88,جنوب بيت الوطن,South Bayet Elwatan,95
+89,كمبوند مون فالي,Compound Moon Vally,65
+90,التجمع الثالث - المنطقة الثالثة,Third settlememt - District 3,65
+91,نادي بالم هيلز القطامية,Palm Hills Katameya Club,65
+92,التجمع الثالث - الحي الأول,Third sttlement - District 1,60
+93,المستثمرين الجنوبية - كمبوند سمارت لايف,South Investors - Smart life Compound,65
+94,القطامية - الطريق الدائري,Katameya - Ring Road,70
+95,فيلات القرنفل,EL-Koronfol Villas,70
+96,مستثمرو الجنوب - آل ياسر,South Investors - Aal Yasser,65
+97,النرجس 7,El Narges 7,50
+98,امتداد المستثمرين الجنوبيه,Extension South Investors,65
+99,وسط البلد - مركز البنوك,Downtown - Banks Center,40
+100,المستثمرين الشمالية - درة القاهرة,North Investors - Durrat Al Qahira,65
+101,الناعب العام,Al Naa'b Al Aam,70
+102,الممر المائي,Waterway,65
+103,البنفسج 3 و 4,El Banafseg 3 & 4,65
+104,العاكسون الجنوبية - كمبوند المصراوية,South Inverstors - Compound El- Masrawia,65
+105,طيبة روز,Tiba Rose,65
+106,الشويفات,Chouifat,50
+107,مستثمرو الجنوب - كمبوند العربية,South Investors - Arabia Compound,65
+108,النادي الاهلي,Al Ahly Club,75
+109,سكن مصر - كمبوند,Sakan Masr - Compound,75
+110,النرجس 3,El Narges 3,50
+111,المستثمرين الجنوبية - جراند ريزيدنس,South Investors - Grand Residence,65
+112,المستثمرين الشمالية - مساكن الأشرفية,North Investors -Ashrafeya Residence,65
+113,الممر المائي الأبيض,Waterway White,65
+114,أرابيلا وGUC,Arabila & GUC,65
+115,المستثمرين الشمالية - القطامية بلازا - سوديك,North Investors - Kattameya Plaza - SODIC,65
+116,كمبوند فيفث سكوير المراسم,Fifth Square Compound Al Marasem,80
+117,المستثمرين الجنوبية - كمبوند ذا فيلا الدورة,South Investors - The Villa Compound Dora,65
+118,التجمع الأول - إسكان الشباب,First Settlement - Eskan ElShbab,65
+119,المستثمرين الجنوبية - كمبوند جراند سيزار,South Investors - Grand Cesar Compound,65
+120,انفرستورز الجنوب - كمبوند ريتاج,South Inverstors - Ritag Compound,65
+121,الجامعة الأمريكية بالقاهرة نقطة 90,AUC Point 90,70
+122,لوتس الشمالية,Northen Lotus,70
+123,القطامية جاردنز,Katameya Gardens,70
+124,البنفسج 5 و 6,El Banafseg 5 & 6,65
+125,المستثمرين الجنوبية - كمبوند الشروق,South Investors - Sunrise Compound,65
+126,مجمع في جي كيه,VGK Compound,80
+127,مركبات الكربون الكلورية فلورية,CFC,50
+128,المستثمرين الشمالية - كمبوند ذا كيو اند لا كينتا,North Investors - The Q & La Quinta Compound,65
+129,هايد بارك,Hyde Park,90
+130,الربوة - القاهرة الجديدة,Rabwa - New Cairo,75
+131,مستثمري الجنوب - نادي الزهور,South investors - Al Zuhour Club,65
+132,حديقة النافورة,Fountain Park,65
+133,التجمع الخامس - المنطقة الثانية,Fifth Settlement - District 2,50
+134,كمبوند ميفيدا,Mivida Compound,80
+135,التجمع الثالث - المنطقة السادسة,Third Settlement - District 6,60
+136,منطقة خدمات البنفسج,El Banafseg Services Area,65
+137,الجامعة الأمريكية - برايم ريزيدنس,AUC - Prime Residence,65
+138,المنطقة الصناعية,industrial zone,75
+139,النرجس 1,El Narges 1,50
+140,كمبوند النخل,El Nakhel Compound,65
+141,ديار,Dyar,65
+142,كمبوند دار مصر,Dar Masr Compound,80
+143,مستثمرو الجنوب - عائلات,South Investors - Families,65
+144,اللوتس الجنوبية,Southern Lotus,65
+145,التجمع الخامس - المنطقة الثالثة,Fifth Settlement - District 3,50
+146,المستثمرين الجنوبية - قطامية بالمز,South Investors - Kattameya Palms,75
+147,المستثمرين الشمالية - حديقة الزهور,North Investors - Flowers Park,65
+148,التجمع الأول - منتجع النخيل,First Settlement - Palm Resort,65
+149,كمبوند جانا مصر,Gana Masr Compound,75
+150,مستثمرو الجنوب -,South Inverstors -,65
+151,الجامعة الأمريكية - الجامعة الأمريكية السكنية,AUC - Auc Residential,65
+152,EXT المستثمرين الشمالية - ماونتن فيو 1,EXT North Investors - Mountain View 1,75
+153,المستثمرين الجنوبية - كمبوند لافي وهايتس ريفييرا,South Investors - La Vie Compound & Riviera Hights,65
+154,جاردينيا هايتس,Gardinia Heights,75
+155,المستثمرين الشمالية - مدينة الصحفيين,North Investors - Madinet El Sahafyeen,65
+156,المستثمرين الشمالية - إسكان الحرية,North Investors - El Horia Housing,65
+157,التجمع الأول - الأمن الإعلام,First Settlement - Al Amn Elaam,65
+158,المستثمرين الشمالية - ريماس,North Investors - Remas,65
+159,هليو بارك - طريق السويس,Helio Park - Suez Rd,80
+160,البنفسج 11 و 12,El Banafseg 11 & 12,50
+161,البنفسج 1 و 2,El Banafseg 1 & 2,65
+162,المستثمرين الشمالية - كمبوند ستيلا,North Investors - Stella Compound,65
+163,كمبوند ميدتاون ولاروا,Midtown & La Rois Compound,65
+164,EXT المستثمرين الشمالية - ديار,EXT North Investors - Dyar,65
+165,القطامية هايتس,Katameya Heights,65
+166,المستثمرين الشمالية - كمبوند مكسيم,North Investors - Maxim Compound,65
+167,المستثمرين الشمالية - فاميلي سيتي,North Investors - Family City,65
+168,النرجس 4,El Narges 4,50
+169,التجمع الثالث - المنطقة السابعة,Third Settlement - District 7,65
+170,EXT North Investors - كمبوند بارادايس القطامية,EXT North Investors - Paradise Katameya Compound,75
+171,أكاديمية الشرق,East Academy,50
+172,النرجس 6,El Narges 6,50
+173,كمبوند ليه روا,Les Rois Compound,65
+174,القطامية ديونز,Katameya Dunes,70
+175,الجامعة الأمريكية بالقاهرة,AUC,65
+176,EXT North Investors - سنترال بارك,EXT North Investors - Central Park,65
+177,مدينة القرن,Century City,65
+178,المستثمرين الشماليين - لا نوفا فيستا,North Investors - La Nuova Vista,65
+179,ميراج مول,Mirage Mall,70
+181,الرحاب ١,,80
+182,الرحاب ٢,,80
+183,جنة مصر,,95
+184,النادي الاهلي,,95
+185,باتيو أورو,,170
+186,ليان صبور,,75
+187,صن شيلي,,95
+188,نخيل دار مصر,,95
+189,بالم هيلز بطانية,,95
+190,محور محمد نجيب,,125`;
 
 const deliveryData = rawData.trim().split('\n').map(line => {
     const parts = line.split(',');
     return {
-        ar: parts[0] ? parts[0].trim() : "",
-        en: parts[1] ? parts[1].trim() : "",
-        price: parts[2] ? parts[2].trim() : "",
-        searchKey: normalizeArabic((parts[0] || "") + (parts[1] || "") + (parts[2] || ""))
+        rowNumber: parts[0] ? parts[0].trim() : "",
+        ar: parts[1] ? parts[1].trim() : "",
+        en: parts[2] ? parts[2].trim() : "",
+        price: parts[3] ? parts[3].trim() : "",
+        searchKey: normalizeArabic((parts[1] || "") + (parts[2] || "") + (parts[3] || ""))
     };
 });
 
 function runSearch() {
     const query = normalizeArabic(document.getElementById('searchInput').value);
     const resultsBox = document.getElementById('resultsBox');
-    
+
     if (query === "") {
         resultsBox.innerHTML = '<div class="no-data">اكتب اسم المكان أو استخدم المايك 🎤..</div>';
         return;
@@ -369,6 +408,7 @@ function runSearch() {
                 <div class="area-info">
                     <span class="area-name">${item.ar}</span>
                     <span class="area-en">${item.en}</span>
+                    <span class="row-number">📋 صف رقم: ${item.rowNumber}</span>
                 </div>
                 <div class="price-tag">
                     <span class="price-label">خدمة الطيار</span>
@@ -391,7 +431,7 @@ function startVoiceSearch() {
         alert('عفواً، متصفحك لا يدعم البحث الصوتي.');
         return;
     }
-    
+
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const micBtn = document.getElementById('micBtn');
     const searchInput = document.getElementById('searchInput');
@@ -415,7 +455,7 @@ function startVoiceSearch() {
         // بمجرد ما يلقط الكلمة، يحطها في مربع البحث
         const spokenText = e.results[0][0].transcript;
         searchInput.value = spokenText;
-        
+
         // نشغل دالة البحث أوتوماتيك عشان النتيجة تطلع فوراً
         runSearch();
     };
