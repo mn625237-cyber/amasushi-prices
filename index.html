@@ -202,10 +202,19 @@ function logVisit() {
   else if (/Firefox/i.test(ua)) browser = 'Firefox';
 
   let os = 'other';
-  if (/Android/i.test(ua))           os = 'Android';
-  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
-  else if (/Windows/i.test(ua))      os = 'Windows';
-  else if (/Mac/i.test(ua))          os = 'Mac';
+  if (/Android/i.test(ua))               os = 'Android';
+  else if (/iPhone/i.test(ua))           os = 'iPhone';
+  else if (/iPad/i.test(ua))             os = 'iPad';
+  else if (/Windows/i.test(ua))          os = 'Windows';
+  else if (/Mac/i.test(ua))              os = 'Mac';
+
+  // استخراج إصدار Android لو موجود
+  const androidMatch = ua.match(/Android\s([0-9.]+)/);
+  if (androidMatch) os = 'Android ' + androidMatch[1];
+
+  // استخراج موديل Samsung لو موجود
+  const samsungMatch = ua.match(/Samsung([A-Z0-9\-]+)/i);
+  if (samsungMatch) os = os + ' · Samsung';
 
   db.collection('amasushi_visits').add({
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -218,19 +227,22 @@ function logVisit() {
 logVisit();
 
 // ==========================================
-// تسجيل البحث (بعد ثانية توقف)
+// تسجيل البحث (بعد ثانيتين من التوقف - مرة واحدة فقط)
 // ==========================================
 let searchLogTimer;
+let lastLoggedQuery = '';
 function logSearch(query) {
   clearTimeout(searchLogTimer);
   searchLogTimer = setTimeout(() => {
-    if (query.trim().length > 1) {
+    const q = query.trim();
+    if (q.length > 2 && q !== lastLoggedQuery) {
+      lastLoggedQuery = q;
       db.collection('amasushi_searches').add({
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        query: query.trim()
+        query: q
       }).catch(() => {});
     }
-  }, 1000);
+  }, 2000);
 }
 
 // ==========================================
