@@ -286,11 +286,6 @@ body {
         <div class="stat-label">زيارات اليوم</div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon">🔍</div>
-        <div class="stat-num" id="totalSearches">—</div>
-        <div class="stat-label">إجمالي البحثات</div>
-      </div>
-      <div class="stat-card">
         <div class="stat-icon">📱</div>
         <div class="stat-num" id="mobilePercent">—</div>
         <div class="stat-label">من موبايل</div>
@@ -301,12 +296,6 @@ body {
     <div class="section">
       <div class="section-title">📊 الأجهزة والأنظمة</div>
       <div id="deviceStats"><div class="loading">جاري التحميل...</div></div>
-    </div>
-
-    <!-- Top Searches -->
-    <div class="section">
-      <div class="section-title">🔍 أكثر المناطق بحثاً</div>
-      <div id="topSearches"><div class="loading">جاري التحميل...</div></div>
     </div>
 
     <!-- Recent Visits -->
@@ -383,8 +372,6 @@ async function loadDashboard() {
   document.getElementById('totalVisits').textContent   = totalVisits;
   document.getElementById('todayVisits').textContent   = todayVisits;
   document.getElementById('mobilePercent').textContent = mobilePercent + '%';
-
-  // ── Device Stats ──
   const osCounts = {};
   const browserCounts = {};
   visits.forEach(v => {
@@ -404,27 +391,24 @@ async function loadDashboard() {
   `;
   document.getElementById('deviceStats').innerHTML = deviceHTML;
 
-  // ── Searches ──
-  const searchSnap = await db.collection('amasushi_searches').get();
-  const searches = searchSnap.docs.map(d => d.data());
-  document.getElementById('totalSearches').textContent = searches.length;
-
-  const searchCounts = {};
-  searches.forEach(s => {
-    const q = (s.query || '').trim().toLowerCase();
-    if (q) searchCounts[q] = (searchCounts[q] || 0) + 1;
+  // ── Device Stats ──
+  const osCounts = {};
+  const browserCounts = {};
+  visits.forEach(v => {
+    osCounts[v.os]           = (osCounts[v.os]           || 0) + 1;
+    browserCounts[v.browser] = (browserCounts[v.browser] || 0) + 1;
   });
-  const topSearches = Object.entries(searchCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
 
-  document.getElementById('topSearches').innerHTML = topSearches.length > 0
-    ? topSearches.map(([q, c]) => `
-        <div class="search-item">
-          <span class="search-text">${q}</span>
-          <span class="search-count">${c}</span>
-        </div>`).join('')
-    : '<div class="loading">لا توجد بحثات بعد</div>';
+  document.getElementById('deviceStats').innerHTML = `
+    <div style="margin-bottom:18px">
+      <div style="font-size:12px;color:#64748b;margin-bottom:10px">نظام التشغيل / الجهاز</div>
+      ${renderBars(osCounts, totalVisits, ['#e67e22','#3b82f6','#22c55e','#a78bfa','#f59e0b'])}
+    </div>
+    <div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:10px">المتصفح</div>
+      ${renderBars(browserCounts, totalVisits, ['#3b82f6','#e67e22','#22c55e','#f59e0b'])}
+    </div>
+  `;
 
   // ── Recent Visits ──
   const recent = visits.slice(0, 20);
