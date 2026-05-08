@@ -372,7 +372,7 @@ async function loadDashboard() {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   // ── Visits ──
-  const visitsSnap = await db.collection('visits').orderBy('timestamp', 'desc').get();
+  const visitsSnap = await db.collection('amasushi_visits').orderBy('timestamp', 'desc').get();
   const visits = visitsSnap.docs.map(d => d.data());
 
   const totalVisits  = visits.length;
@@ -405,7 +405,7 @@ async function loadDashboard() {
   document.getElementById('deviceStats').innerHTML = deviceHTML;
 
   // ── Searches ──
-  const searchSnap = await db.collection('searches').get();
+  const searchSnap = await db.collection('amasushi_searches').get();
   const searches = searchSnap.docs.map(d => d.data());
   document.getElementById('totalSearches').textContent = searches.length;
 
