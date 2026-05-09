@@ -386,24 +386,6 @@ async function loadDashboard() {
   document.getElementById('totalVisits').textContent   = totalVisits;
   document.getElementById('todayVisits').textContent   = todayVisits;
   document.getElementById('mobilePercent').textContent = mobilePercent + '%';
-  const osCounts = {};
-  const browserCounts = {};
-  visits.forEach(v => {
-    osCounts[v.os]         = (osCounts[v.os]         || 0) + 1;
-    browserCounts[v.browser] = (browserCounts[v.browser] || 0) + 1;
-  });
-
-  const deviceHTML = `
-    <div style="margin-bottom:18px">
-      <div style="font-size:12px;color:#64748b;margin-bottom:10px">نظام التشغيل</div>
-      ${renderBars(osCounts, totalVisits, ['#e67e22','#3b82f6','#22c55e','#a78bfa'])}
-    </div>
-    <div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:10px">المتصفح</div>
-      ${renderBars(browserCounts, totalVisits, ['#3b82f6','#e67e22','#22c55e','#f59e0b'])}
-    </div>
-  `;
-  document.getElementById('deviceStats').innerHTML = deviceHTML;
 
   // ── Device Stats ──
   const osCounts = {};
