@@ -356,14 +356,14 @@ function doLogin() {
   errEl.style.display = 'none';
 
   auth.signInWithEmailAndPassword(email, pass).then(() => {
-    sessionStorage.setItem('isAdmin', 'true');
+    localStorage.setItem('isAdmin', 'true');
   }).catch(() => {
     errEl.style.display = 'block';
   });
 }
 
 function doLogout() {
-  sessionStorage.removeItem('isAdmin');
+  localStorage.removeItem('isAdmin');
   auth.signOut();
 }
 
