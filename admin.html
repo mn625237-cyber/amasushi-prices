@@ -290,6 +290,11 @@ body {
         <div class="stat-num" id="mobilePercent">—</div>
         <div class="stat-label">من موبايل</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔍</div>
+        <div class="stat-num" id="todaySearches">—</div>
+        <div class="stat-label">بحث اليوم</div>
+      </div>
     </div>
 
     <!-- Devices -->
@@ -302,6 +307,12 @@ body {
     <div class="section">
       <div class="section-title">🕐 آخر الزيارات</div>
       <div id="recentVisits"><div class="loading">جاري التحميل...</div></div>
+    </div>
+
+    <!-- Missing Searches -->
+    <div class="section">
+      <div class="section-title">🕳️ مناطق يبحث عنها المندوبون ومش موجودة</div>
+      <div id="missingSearches"><div class="loading">جاري التحميل...</div></div>
     </div>
 
   </div>
@@ -344,12 +355,15 @@ function doLogin() {
   const errEl = document.getElementById('loginError');
   errEl.style.display = 'none';
 
-  auth.signInWithEmailAndPassword(email, pass).catch(() => {
+  auth.signInWithEmailAndPassword(email, pass).then(() => {
+    sessionStorage.setItem('isAdmin', 'true');
+  }).catch(() => {
     errEl.style.display = 'block';
   });
 }
 
 function doLogout() {
+  sessionStorage.removeItem('isAdmin');
   auth.signOut();
 }
 
@@ -423,6 +437,37 @@ async function loadDashboard() {
           </div>`;
       }).join('')
     : '<div class="loading">لا توجد زيارات بعد</div>';
+
+  // ── Today Searches ──
+  try {
+    const searchSnap = await db.collection('amasushi_searches').get();
+    const todaySearches = searchSnap.docs
+      .map(d => d.data())
+      .filter(s => s.timestamp?.toDate() >= todayStart).length;
+    document.getElementById('todaySearches').textContent = todaySearches;
+  } catch(e) {
+    document.getElementById('todaySearches').textContent = '—';
+  }
+
+  // ── Missing Searches ──
+  try {
+    const missingSnap = await db.collection('amasushi_missing_searches').get();
+    const missing = missingSnap.docs.map(d => d.data().query || '');
+    const freq = {};
+    missing.forEach(q => {
+      if (q.trim().length > 1) freq[q.trim()] = (freq[q.trim()] || 0) + 1;
+    });
+    const top = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    document.getElementById('missingSearches').innerHTML = top.length > 0
+      ? top.map(([q, c]) => `
+          <div class="search-item">
+            <span class="search-text">${q}</span>
+            <span class="search-count">${c}</span>
+          </div>`).join('')
+      : '<div class="loading">لا توجد مناطق مفقودة 🎉</div>';
+  } catch(e) {
+    document.getElementById('missingSearches').innerHTML = '<div class="loading">لا توجد بيانات بعد</div>';
+  }
 }
 
 function renderBars(counts, total, colors) {
