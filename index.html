@@ -224,10 +224,16 @@ function logVisit() {
   }).catch(() => {});
 }
 
-logVisit();
+// ==========================================
+// منع تسجيل زيارات الأدمن
+// ==========================================
+function logVisitIfNotAdmin() {
+  if (sessionStorage.getItem('isAdmin')) return;
+  logVisit();
+}
 
 // ==========================================
-// تسجيل البحث (بعد ثانيتين من التوقف - مرة واحدة فقط)
+// تسجيل البحث الناجح (بعد ثانيتين - مرة واحدة فقط)
 // ==========================================
 let searchLogTimer;
 let lastLoggedQuery = '';
@@ -244,6 +250,27 @@ function logSearch(query) {
     }
   }, 2000);
 }
+
+// ==========================================
+// تسجيل البحث الفاشل - منطقة مفقودة
+// ==========================================
+let missingLogTimer;
+let lastMissingQuery = '';
+function logMissingSearch(query) {
+  clearTimeout(missingLogTimer);
+  missingLogTimer = setTimeout(() => {
+    const q = query.trim();
+    if (q.length > 2 && q !== lastMissingQuery) {
+      lastMissingQuery = q;
+      db.collection('amasushi_missing_searches').add({
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        query: q
+      }).catch(() => {});
+    }
+  }, 2000);
+}
+
+logVisitIfNotAdmin();
 
 // ==========================================
 // تنظيف النصوص للبحث
@@ -484,8 +511,6 @@ function runSearch() {
     return;
   }
 
-  logSearch(raw);
-
   // بحث مباشر أولاً، لو مفيش نتائج نستخدم Fuzzy
   let filtered = deliveryData.filter(item => item.searchKey.includes(query));
 
@@ -495,6 +520,7 @@ function runSearch() {
   }
 
   if (filtered.length > 0) {
+    logSearch(raw);
     resultsBox.innerHTML = filtered.map(item => `
       <div class="result-item">
         <div class="area-info">
@@ -509,6 +535,7 @@ function runSearch() {
       </div>
     `).join('');
   } else {
+    logMissingSearch(raw);
     resultsBox.innerHTML = '<div class="no-data">لم نجد هذا المكان.. جرب كتابته بشكل مختلف 🔍</div>';
   }
 }
