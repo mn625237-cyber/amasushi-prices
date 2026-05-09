@@ -208,13 +208,20 @@ function logVisit() {
   else if (/Windows/i.test(ua))          os = 'Windows';
   else if (/Mac/i.test(ua))              os = 'Mac';
 
-  // استخراج إصدار Android لو موجود
+  // استخراج إصدار Android
   const androidMatch = ua.match(/Android\s([0-9.]+)/);
   if (androidMatch) os = 'Android ' + androidMatch[1];
 
-  // استخراج موديل Samsung لو موجود
-  const samsungMatch = ua.match(/Samsung([A-Z0-9\-]+)/i);
-  if (samsungMatch) os = os + ' · Samsung';
+  // كشف الماركة من كود الموديل
+  if      (/SM-/i.test(ua))                    os += ' · Samsung';
+  else if (/CPH/i.test(ua))                    os += ' · Oppo';
+  else if (/RMX/i.test(ua))                    os += ' · Realme';
+  else if (/\b(M\d{4}K|2\d{9}|21\d{8})/i.test(ua)) os += ' · Xiaomi';
+  else if (/TECNO/i.test(ua))                  os += ' · Tecno';
+  else if (/Infinix/i.test(ua))                os += ' · Infinix';
+  else if (/vivo/i.test(ua))                   os += ' · Vivo';
+  else if (/HONOR/i.test(ua))                  os += ' · Honor';
+  else if (/Huawei|HW-/i.test(ua))             os += ' · Huawei';
 
   db.collection('amasushi_visits').add({
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
@@ -228,7 +235,7 @@ function logVisit() {
 // منع تسجيل زيارات الأدمن
 // ==========================================
 function logVisitIfNotAdmin() {
-  if (sessionStorage.getItem('isAdmin')) return;
+  if (localStorage.getItem('isAdmin')) return;
   logVisit();
 }
 
