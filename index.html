@@ -148,6 +148,27 @@ h1 {
   min-width: 85px;
 }
 .price-label { font-size: 9px; display: block; font-weight: normal; margin-bottom: 2px; }
+.price-tag.high { background: #e74c3c; }
+.map-btn {
+  display: block;
+  margin-top: 6px;
+  background: #1a73e8;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.map-btn:active { opacity: 0.8; }
+.last-update {
+  font-size: 11px;
+  color: #95a5a6;
+  margin-bottom: 15px;
+  text-align: center;
+}
 .no-data { color: #bdc3c7; margin-top: 150px; font-size: 16px; }
 </style>
 </head>
@@ -157,6 +178,7 @@ h1 {
   <img src="logo.jpg" alt="لوجو اما سوشي" class="app-logo">
   <h1><span class="moto-icon">🛵</span> اسعار التوصيل واماكن التغطية</h1>
   <div class="sub-title">اما سوشي التجمع الخامس</div>
+  <div class="last-update">🗓️ آخر تحديث للأسعار: 10 مايو 2026</div>
 
   <div class="search-wrap">
     <input type="text" id="searchInput" class="search-box"
@@ -509,18 +531,27 @@ const fuse = new Fuse(deliveryData, {
 });
 
 function runSearch() {
-  const raw   = document.getElementById('searchInput').value;
+  const raw   = document.getElementById('searchInput').value.trim();
   const query = normalizeArabic(raw);
   const resultsBox = document.getElementById('resultsBox');
 
-  if (query === "") {
-    resultsBox.innerHTML = '<div class="no-data">اكتب اسم المكان أو استخدم المايك 🎤..</div>';
+  if (raw === "") {
+    resultsBox.innerHTML = '<div class="no-data">اكتب اسم المكان أو رقم الشيت أو استخدم المايك 🎤..</div>';
     return;
   }
 
-  // بحث مباشر أولاً، لو مفيش نتائج نستخدم Fuzzy
-  let filtered = deliveryData.filter(item => item.searchKey.includes(query));
+  // بحث بالرقم
+  let filtered = [];
+  if (/^\d+$/.test(raw.trim())) {
+    filtered = deliveryData.filter(item => item.rowNumber === raw.trim());
+  }
 
+  // بحث بالاسم لو مش رقم أو مفيش نتيجة
+  if (filtered.length === 0) {
+    filtered = deliveryData.filter(item => item.searchKey.includes(query));
+  }
+
+  // Fuzzy لو لسه مفيش نتيجة
   if (filtered.length === 0) {
     const fuseResults = fuse.search(query);
     filtered = fuseResults.map(r => r.item);
@@ -528,19 +559,26 @@ function runSearch() {
 
   if (filtered.length > 0) {
     logSearch(raw);
-    resultsBox.innerHTML = filtered.map(item => `
-      <div class="result-item">
-        <div class="area-info">
-          <span class="area-name">${item.ar}</span>
-          <span class="area-en">${item.en}</span>
-          <span class="row-number">📋 شيت رقم: ${item.rowNumber}</span>
+    resultsBox.innerHTML = filtered.map(item => {
+      const priceNum = parseInt(item.price);
+      const priceClass = priceNum > 100 ? 'price-tag high' : 'price-tag';
+      const mapQuery = encodeURIComponent((item.ar || item.en) + ' القاهرة الجديدة');
+      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
+      return `
+        <div class="result-item">
+          <div class="area-info">
+            <span class="area-name">${item.ar}</span>
+            <span class="area-en">${item.en}</span>
+            <span class="row-number">📋 شيت رقم: ${item.rowNumber}</span>
+            <a href="${mapUrl}" target="_blank" class="map-btn">📍 عرض على الخريطة</a>
+          </div>
+          <div class="${priceClass}">
+            <span class="price-label">خدمة الطيار</span>
+            ${item.price} ج.م
+          </div>
         </div>
-        <div class="price-tag">
-          <span class="price-label">خدمة الطيار</span>
-          ${item.price} ج.م
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } else {
     logMissingSearch(raw);
     resultsBox.innerHTML = '<div class="no-data">لم نجد هذا المكان.. جرب كتابته بشكل مختلف 🔍</div>';
