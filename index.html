@@ -2,33 +2,91 @@
 <html lang="ar" dir="rtl">
 <head>
 
-<!-- Cache Control: يمنع المتصفح من كاش النسخة القديمة -->
+<!-- Cache Control -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9fa">
+<meta name="theme-color" media="(prefers-color-scheme: dark)"  content="#111827">
 <title>اسعار التوصيل - اما سوشي</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
 
-<!-- Fuse.js - Fuzzy Search -->
+<!-- Fuse.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/7.0.0/fuse.min.js"></script>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 
 <style>
+/* ============================================================
+   CSS VARIABLES — Auto Dark / Light based on system preference
+   ============================================================ */
+:root {
+  /* Main page — Light defaults */
+  --bg:             #f8f9fa;
+  --surface:        #ffffff;
+  --text-1:         #2c3e50;
+  --text-2:         #7f8c8d;
+  --text-3:         #bdc3c7;
+  --border:         #f1f1f1;
+  --primary:        #e67e22;
+  --primary-hover:  #d35400;
+  --primary-glow:   rgba(230, 126, 34, 0.20);
+  --card-shadow:    0 10px 30px rgba(0,0,0,0.08);
+  --price-ok:       #27ae60;
+  --price-high:     #e74c3c;
+  --map-btn:        #1a73e8;
+  --badge-blue:     #3498db;
+
+  /* Admin / Sidebar — always dark (not affected by media query) */
+  --adm-bg:         #0f1117;
+  --adm-surface:    #1a1d27;
+  --adm-surface-2:  #111827;
+  --adm-border:     #2d3148;
+  --adm-text:       #e2e8f0;
+  --adm-muted:      #64748b;
+  --adm-secondary:  #94a3b8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #111827;
+    --surface:     #1f2937;
+    --text-1:      #f1f5f9;
+    --text-2:      #94a3b8;
+    --text-3:      #475569;
+    --border:      #374151;
+    --primary-glow: rgba(230, 126, 34, 0.12);
+    --card-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  }
+}
+
+/* ============================================================
+   BASE
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
 body {
   font-family: 'Cairo', sans-serif;
-  background-color: #f8f9fa;
+  background-color: var(--bg);
+  color: var(--text-1);
   margin: 0;
   padding: 10px;
   display: flex;
   justify-content: center;
   touch-action: manipulation;
+  /* Prevents flicker on theme change */
+  transition: background-color 0.25s, color 0.25s;
 }
+
+/* ============================================================
+   MAIN APP — صفحة المندوب
+   ============================================================ */
 .app-container {
   width: 100%;
   max-width: 500px;
@@ -37,143 +95,432 @@ body {
   flex-direction: column;
   align-items: center;
 }
+
 .app-logo {
-  width: 110px;
-  height: 110px;
+  width: 110px; height: 110px;
   border-radius: 50%;
-  border: 3px solid #e67e22;
+  border: 3px solid var(--primary);
   object-fit: cover;
-  margin-bottom: 15px;
-  margin-top: 10px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  margin-bottom: 15px; margin-top: 10px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.12);
 }
+
 h1 {
-  color: #e67e22;
+  color: var(--primary);
   font-size: 20px;
   margin: 0 0 5px 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
 }
 .moto-icon { font-size: 1.4em; }
+
 .sub-title {
-  color: #7f8c8d;
+  color: var(--text-2);
   font-size: 14px;
   margin-bottom: 25px;
 }
+
+.last-update {
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 15px;
+}
+
+/* ============================================================
+   SEARCH BOX
+   ============================================================ */
 .search-wrap {
   position: relative;
   width: 100%;
   margin-bottom: 20px;
 }
+
 .search-box {
   width: 100%;
   padding: 18px;
   padding-right: 50px;
   font-size: 18px;
-  border: 2px solid #e67e22;
+  border: 2px solid var(--primary);
   border-radius: 50px;
   box-sizing: border-box;
   outline: none;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(230, 126, 34, 0.2);
+  box-shadow: 0 4px 12px var(--primary-glow);
   font-family: inherit;
+  background: var(--surface);
+  color: var(--text-1);
+  transition: background 0.25s, color 0.25s, border-color 0.2s;
 }
+.search-box::placeholder { color: var(--text-2); }
+
 .mic-btn {
-  position: absolute;
-  right: 15px;
-  top: 50%;
+  position: absolute; right: 15px; top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: none;
-  font-size: 22px;
-  cursor: pointer;
-  padding: 5px;
-  border-radius: 50%;
-  transition: all 0.2s;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
+  background: none; border: none; font-size: 22px; cursor: pointer;
+  padding: 5px; border-radius: 50%; transition: all 0.2s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .mic-btn.listening {
   background: #ffe5d9;
-  box-shadow: 0 0 10px rgba(230, 126, 34, 0.5);
+  box-shadow: 0 0 10px rgba(230,126,34,0.5);
   animation: pulse-mic 1s infinite;
 }
 @keyframes pulse-mic {
-  0%   { transform: translateY(-50%) scale(1); }
-  50%  { transform: translateY(-50%) scale(1.15); }
-  100% { transform: translateY(-50%) scale(1); }
+  0%,100% { transform: translateY(-50%) scale(1); }
+  50%      { transform: translateY(-50%) scale(1.15); }
 }
+
+/* ============================================================
+   RESULTS
+   ============================================================ */
 .results-container {
-  background: #ffffff;
+  background: var(--surface);
   border-radius: 20px;
   padding: 10px;
   min-height: 400px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  box-shadow: var(--card-shadow);
   width: 100%;
+  transition: background 0.25s;
 }
+
 .result-item {
   padding: 15px 20px;
-  border-bottom: 1px solid #f1f1f1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
   animation: fadeIn 0.3s ease;
 }
+.result-item:last-child { border-bottom: none; }
+
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
 .area-info { text-align: right; flex: 1; }
-.area-name { font-weight: 700; color: #2c3e50; font-size: 16px; display: block; }
-.area-en   { color: #95a5a6; font-size: 11px; display: block; }
+.area-name { font-weight: 700; color: var(--text-1); font-size: 16px; display: block; }
+.area-en   { color: var(--text-2); font-size: 11px; display: block; }
+
 .row-number {
   display: inline-block;
-  background: #3498db;
-  color: white;
-  font-size: 11px;
-  font-weight: bold;
-  padding: 2px 8px;
-  border-radius: 10px;
-  margin-top: 4px;
+  background: var(--badge-blue); color: white;
+  font-size: 11px; font-weight: bold;
+  padding: 2px 8px; border-radius: 10px; margin-top: 4px;
 }
+
 .price-tag {
-  background: #27ae60;
-  color: white;
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 18px;
-  font-weight: bold;
-  min-width: 85px;
+  background: var(--price-ok); color: white;
+  padding: 8px 12px; border-radius: 12px;
+  font-size: 18px; font-weight: bold;
+  min-width: 85px; text-align: center;
 }
 .price-label { font-size: 9px; display: block; font-weight: normal; margin-bottom: 2px; }
-.price-tag.high { background: #e74c3c; }
+.price-tag.high { background: var(--price-high); }
+
 .map-btn {
-  display: block;
-  margin-top: 6px;
-  background: #1a73e8;
-  color: white;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 8px;
-  text-decoration: none;
-  text-align: center;
+  display: block; margin-top: 6px;
+  background: var(--map-btn); color: white;
+  font-size: 11px; font-weight: 700;
+  padding: 4px 10px; border-radius: 8px;
+  text-decoration: none; text-align: center;
   -webkit-tap-highlight-color: transparent;
 }
 .map-btn:active { opacity: 0.8; }
-.last-update {
-  font-size: 11px;
-  color: #95a5a6;
-  margin-bottom: 15px;
-  text-align: center;
+
+.no-data { color: var(--text-3); margin-top: 150px; font-size: 16px; }
+
+
+/* ============================================================
+   FLOATING MENU BUTTON  ☰
+   ============================================================ */
+#menuBtn {
+  position: fixed;
+  bottom: 24px; right: 20px;
+  width: 50px; height: 50px;
+  border-radius: 50%;
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  color: var(--adm-secondary);
+  font-size: 19px;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 90;
+  transition: transform 0.25s, background 0.2s;
+  -webkit-tap-highlight-color: transparent;
 }
-.no-data { color: #bdc3c7; margin-top: 150px; font-size: 16px; }
+#menuBtn:active   { transform: scale(0.9); }
+#menuBtn.is-open  { background: var(--primary); color: white; border-color: var(--primary); }
+
+
+/* ============================================================
+   SIDEBAR BACKDROP
+   ============================================================ */
+#sbBackdrop {
+  position: fixed; inset: 0;
+  background: transparent;
+  z-index: 200;
+  pointer-events: none;
+  transition: background 0.3s;
+}
+#sbBackdrop.show {
+  background: rgba(0,0,0,0.6);
+  pointer-events: all;
+}
+
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+#sidebar {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 82%; max-width: 310px;
+  background: var(--adm-bg);
+  z-index: 300;
+  display: flex; flex-direction: column;
+  transform: translateX(105%);
+  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+#sidebar.open { transform: translateX(0); }
+
+/* Header */
+.sb-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--adm-border);
+  flex-shrink: 0;
+}
+.sb-hdr-title {
+  font-size: 15px; font-weight: 700; color: var(--primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.sb-close-btn {
+  width: 30px; height: 30px;
+  background: var(--adm-surface); border: none; border-radius: 50%;
+  color: var(--adm-secondary); font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s;
+}
+.sb-close-btn:active { background: #374151; }
+
+/* Body */
+.sb-body { flex: 1; overflow-y: auto; }
+
+/* Accordion sections */
+.sb-acc {
+  border-bottom: 1px solid var(--adm-surface);
+}
+.sb-acc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px;
+  cursor: pointer; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.sb-acc-head:active { background: var(--adm-surface); }
+
+.sb-acc-label {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; font-weight: 700; color: var(--adm-text);
+}
+.sb-acc-icon { font-size: 17px; }
+
+.sb-chevron {
+  color: var(--adm-muted); font-size: 11px;
+  display: inline-block;
+  transition: transform 0.25s;
+}
+.sb-acc.open .sb-chevron { transform: rotate(180deg); }
+
+.sb-acc-body {
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.35s ease;
+}
+.sb-acc.open .sb-acc-body { max-height: 700px; }
+.sb-acc-inner { padding: 4px 18px 18px; }
+
+/* ── About rows ── */
+.about-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--adm-surface);
+  font-size: 12px;
+}
+.about-row:last-child { border-bottom: none; }
+.about-key { color: var(--adm-muted); flex: 0 0 80px; padding-top: 1px; }
+.about-val { color: var(--adm-text); font-weight: 700; flex: 1; }
+
+/* ── Admin Login ── */
+.a-sublabel { font-size: 11px; color: var(--adm-muted); margin-bottom: 12px; }
+.a-input {
+  width: 100%; padding: 12px 14px;
+  background: var(--adm-surface); border: 1px solid var(--adm-border);
+  border-radius: 10px; color: var(--adm-text);
+  font-family: 'Cairo', sans-serif; font-size: 13px;
+  outline: none; margin-bottom: 10px;
+  transition: border-color 0.2s;
+}
+.a-input:focus { border-color: var(--primary); }
+.a-login-btn {
+  width: 100%; padding: 12px;
+  background: var(--primary); border: none; border-radius: 10px;
+  color: white; font-family: 'Cairo', sans-serif;
+  font-size: 14px; font-weight: 700;
+  cursor: pointer; transition: background 0.2s;
+}
+.a-login-btn:active { background: var(--primary-hover); }
+.a-err {
+  color: #ef4444; font-size: 12px;
+  margin-top: 8px; text-align: center;
+  display: none;
+}
+
+/* ── Admin logged-in state ── */
+.a-logged { display: none; gap: 10px; flex-direction: column; }
+.a-logged.show { display: flex; }
+.a-user-badge {
+  background: var(--adm-surface); border-radius: 10px;
+  padding: 10px 12px; font-size: 12px; color: var(--adm-secondary);
+  display: flex; align-items: center; gap: 8px;
+}
+.a-open-dash {
+  width: 100%; padding: 12px;
+  background: var(--adm-surface); border: 1px solid var(--adm-border);
+  border-radius: 10px; color: var(--adm-text);
+  font-family: 'Cairo', sans-serif; font-size: 13px; font-weight: 700;
+  cursor: pointer; transition: background 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.a-open-dash:active { background: #374151; }
+.a-logout-btn {
+  width: 100%; padding: 10px;
+  background: transparent; border: 1px solid var(--adm-border);
+  border-radius: 10px; color: var(--adm-muted);
+  font-family: 'Cairo', sans-serif; font-size: 12px; cursor: pointer;
+  transition: all 0.2s;
+}
+.a-logout-btn:active { background: #ef4444; color: white; border-color: #ef4444; }
+
+
+/* ============================================================
+   ADMIN DASHBOARD OVERLAY  — always dark
+   ============================================================ */
+#adminOverlay {
+  position: fixed; inset: 0;
+  background: var(--adm-bg);
+  z-index: 500;
+  display: flex; flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+#adminOverlay.open { transform: translateY(0); }
+
+/* Overlay Header */
+.ao-hdr {
+  background: var(--adm-surface);
+  border-bottom: 1px solid var(--adm-border);
+  padding: 16px 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.ao-title {
+  font-size: 15px; font-weight: 700; color: var(--primary);
+  display: flex; align-items: center; gap: 8px;
+}
+.ao-hdr-right { display: flex; align-items: center; gap: 8px; }
+.ao-logout-txt {
+  font-size: 12px; color: var(--adm-muted);
+  background: none; border: none;
+  font-family: 'Cairo', sans-serif; cursor: pointer; padding: 4px 8px;
+}
+.ao-logout-txt:active { color: #ef4444; }
+.ao-close-btn {
+  width: 32px; height: 32px;
+  background: var(--adm-surface); border: 1px solid var(--adm-border);
+  border-radius: 50%; color: var(--adm-secondary);
+  font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Overlay Body */
+.ao-body { flex: 1; overflow-y: auto; padding: 16px; }
+
+/* Stat Cards */
+.ao-cards {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-bottom: 16px;
+}
+.ao-card {
+  background: var(--adm-surface); border: 1px solid var(--adm-border);
+  border-radius: 14px; padding: 14px; text-align: center;
+}
+.ao-card-icon { font-size: 20px; margin-bottom: 5px; }
+.ao-card-num  { font-size: 26px; font-weight: 700; color: var(--primary); line-height: 1; }
+.ao-card-lbl  { font-size: 10px; color: var(--adm-muted); margin-top: 4px; }
+
+/* Section block */
+.ao-sec {
+  background: var(--adm-surface); border: 1px solid var(--adm-border);
+  border-radius: 14px; padding: 14px; margin-bottom: 12px;
+}
+.ao-sec-title {
+  font-size: 12px; font-weight: 700; color: var(--adm-secondary);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+}
+
+/* Device bars */
+.d-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.d-lbl {
+  font-size: 11px; min-width: 120px; max-width: 120px;
+  color: var(--adm-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.d-bar-wrap { flex: 1; background: var(--adm-bg); border-radius: 999px; height: 7px; overflow: hidden; }
+.d-bar-fill { height: 100%; border-radius: 999px; transition: width 0.8s ease; }
+.d-cnt { font-size: 11px; font-weight: 700; min-width: 22px; text-align: left; }
+
+/* Log items */
+.log-item {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  padding: 8px 0; border-bottom: 1px solid var(--adm-border); font-size: 11px;
+}
+.log-item:last-child { border-bottom: none; }
+.log-dev  { color: var(--adm-secondary); flex: 1; line-height: 1.5; }
+.log-time { color: var(--adm-muted); font-size: 10px; white-space: nowrap; padding-right: 6px; }
+
+/* Missing searches */
+.miss-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 10px; background: var(--adm-bg);
+  border-radius: 8px; margin-bottom: 5px;
+}
+.miss-q   { font-size: 12px; color: var(--adm-text); }
+.miss-cnt {
+  background: var(--primary); color: white;
+  font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px;
+}
+
+/* Coming Soon */
+.coming-soon {
+  width: 100%; padding: 14px;
+  background: transparent; border: 1px dashed var(--adm-border);
+  border-radius: 12px; color: var(--adm-muted);
+  font-family: 'Cairo', sans-serif; font-size: 13px;
+  cursor: not-allowed; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+
+/* Loading */
+.ao-loading { color: var(--adm-muted); font-size: 13px; text-align: center; padding: 24px; }
 </style>
 </head>
 <body>
 
+<!-- ============================================================
+     MAIN APP — لا يتغير شيء هنا
+     ============================================================ -->
 <div class="app-container">
   <img src="logo.jpg" alt="لوجو اما سوشي" class="app-logo">
   <h1><span class="moto-icon">🛵</span> اسعار التوصيل واماكن التغطية</h1>
@@ -192,10 +539,138 @@ h1 {
   </div>
 </div>
 
+
+<!-- ============================================================
+     FLOATING MENU BUTTON
+     ============================================================ -->
+<button id="menuBtn" onclick="openSidebar()" aria-label="القائمة">☰</button>
+
+
+<!-- ============================================================
+     SIDEBAR BACKDROP
+     ============================================================ -->
+<div id="sbBackdrop" onclick="closeSidebar()"></div>
+
+
+<!-- ============================================================
+     SIDEBAR
+     ============================================================ -->
+<div id="sidebar" role="dialog" aria-label="القائمة">
+
+  <div class="sb-hdr">
+    <div class="sb-hdr-title">🍣 اما سوشي</div>
+    <button class="sb-close-btn" onclick="closeSidebar()">✕</button>
+  </div>
+
+  <div class="sb-body">
+
+    <!-- ── عن التطبيق ── -->
+    <div class="sb-acc" id="acc-about">
+      <div class="sb-acc-head" onclick="toggleAcc('about')">
+        <div class="sb-acc-label">
+          <span class="sb-acc-icon">ℹ️</span>
+          <span>عن التطبيق</span>
+        </div>
+        <span class="sb-chevron">▾</span>
+      </div>
+      <div class="sb-acc-body">
+        <div class="sb-acc-inner">
+          <div class="about-row">
+            <span class="about-key">الاسم</span>
+            <span class="about-val">اما سوشي — أسعار التوصيل</span>
+          </div>
+          <div class="about-row">
+            <span class="about-key">الفرع</span>
+            <span class="about-val">التجمع الخامس</span>
+          </div>
+          <div class="about-row">
+            <span class="about-key">الإصدار</span>
+            <span class="about-val">v2.0</span>
+          </div>
+          <div class="about-row">
+            <span class="about-key">المناطق</span>
+            <span class="about-val">190+ منطقة مغطاة</span>
+          </div>
+          <div class="about-row">
+            <span class="about-key">الهدف</span>
+            <span class="about-val">أداة داخلية لمندوبي التوصيل</span>
+          </div>
+          <div class="about-row">
+            <span class="about-key">آخر تحديث</span>
+            <span class="about-val">10 مايو 2026</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── دخول المدير ── -->
+    <div class="sb-acc" id="acc-admin">
+      <div class="sb-acc-head" onclick="toggleAcc('admin')">
+        <div class="sb-acc-label">
+          <span class="sb-acc-icon">🔐</span>
+          <span>دخول المدير</span>
+        </div>
+        <span class="sb-chevron">▾</span>
+      </div>
+      <div class="sb-acc-body">
+        <div class="sb-acc-inner">
+
+          <!-- Login Form -->
+          <div id="sbLoginForm">
+            <div class="a-sublabel">خاص بالمدير فقط</div>
+            <input type="email"    id="aEmail" class="a-input" placeholder="البريد الإلكتروني">
+            <input type="password" id="aPass"  class="a-input" placeholder="كلمة المرور">
+            <button class="a-login-btn" onclick="doLogin()">دخول</button>
+            <div class="a-err" id="aErr">بيانات غير صحيحة، حاول مجدداً</div>
+          </div>
+
+          <!-- Logged-in State -->
+          <div class="a-logged" id="sbLoggedState">
+            <div class="a-user-badge">
+              <span>✅</span>
+              <span id="loggedEmail" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
+            </div>
+            <button class="a-open-dash" onclick="openAdminDashboard()">
+              <span>📊</span><span>فتح لوحة التحكم</span>
+            </button>
+            <button class="a-logout-btn" onclick="doLogout()">تسجيل الخروج</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ============================================================
+     ADMIN DASHBOARD OVERLAY
+     ============================================================ -->
+<div id="adminOverlay">
+
+  <div class="ao-hdr">
+    <div class="ao-title">📊 لوحة التحكم</div>
+    <div class="ao-hdr-right">
+      <button class="ao-logout-txt" onclick="doLogout()">خروج</button>
+      <button class="ao-close-btn"  onclick="closeAdminDashboard()">✕</button>
+    </div>
+  </div>
+
+  <div class="ao-body" id="aoDashBody">
+    <div class="ao-loading">جاري التحميل...</div>
+  </div>
+
+</div>
+
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
 <script>
-// ==========================================
+// ──────────────────────────────────────────────────
 // Firebase Init
-// ==========================================
+// ──────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey:            "AIzaSyBRSTsBy_2rgfqWASSFAF3jNXe2fgvnWw8",
   authDomain:        "amasushi-prices.firebaseapp.com",
@@ -204,68 +679,50 @@ const firebaseConfig = {
   messagingSenderId: "972743740267",
   appId:             "1:972743740267:web:24eb04cf828b545a41da2e"
 };
-
 firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+const auth = firebase.auth();
+const db   = firebase.firestore();
 
-// ==========================================
-// تسجيل الزيارة تلقائياً
-// ==========================================
+// ──────────────────────────────────────────────────
+// Visit Logging — UNCHANGED
+// ──────────────────────────────────────────────────
 function logVisit() {
   const ua = navigator.userAgent;
-
-  let device = 'desktop';
-  if (/Android|iPhone|iPad|iPod/i.test(ua)) device = 'mobile';
-
+  let device  = /Android|iPhone|iPad|iPod/i.test(ua) ? 'mobile' : 'desktop';
   let browser = 'other';
   if (/Edg\//i.test(ua))        browser = 'Edge';
   else if (/Chrome/i.test(ua))  browser = 'Chrome';
   else if (/Safari/i.test(ua))  browser = 'Safari';
   else if (/Firefox/i.test(ua)) browser = 'Firefox';
-
   let os = 'other';
-  if (/Android/i.test(ua))               os = 'Android';
-  else if (/iPhone/i.test(ua))           os = 'iPhone';
-  else if (/iPad/i.test(ua))             os = 'iPad';
-  else if (/Windows/i.test(ua))          os = 'Windows';
-  else if (/Mac/i.test(ua))              os = 'Mac';
-
-  // استخراج إصدار Android
+  if      (/Android/i.test(ua)) os = 'Android';
+  else if (/iPhone/i.test(ua))  os = 'iPhone';
+  else if (/iPad/i.test(ua))    os = 'iPad';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Mac/i.test(ua))     os = 'Mac';
   const androidMatch = ua.match(/Android\s([0-9.]+)/);
   if (androidMatch) os = 'Android ' + androidMatch[1];
-
-  // كشف الماركة من كود الموديل
-  if      (/SM-/i.test(ua))                    os += ' · Samsung';
-  else if (/CPH/i.test(ua))                    os += ' · Oppo';
-  else if (/RMX/i.test(ua))                    os += ' · Realme';
+  if      (/SM-/i.test(ua))     os += ' · Samsung';
+  else if (/CPH/i.test(ua))     os += ' · Oppo';
+  else if (/RMX/i.test(ua))     os += ' · Realme';
   else if (/\b(M\d{4}K|2\d{9}|21\d{8})/i.test(ua)) os += ' · Xiaomi';
-  else if (/TECNO/i.test(ua))                  os += ' · Tecno';
-  else if (/Infinix/i.test(ua))                os += ' · Infinix';
-  else if (/vivo/i.test(ua))                   os += ' · Vivo';
-  else if (/HONOR/i.test(ua))                  os += ' · Honor';
-  else if (/Huawei|HW-/i.test(ua))             os += ' · Huawei';
-
+  else if (/TECNO/i.test(ua))   os += ' · Tecno';
+  else if (/Infinix/i.test(ua)) os += ' · Infinix';
+  else if (/vivo/i.test(ua))    os += ' · Vivo';
+  else if (/HONOR/i.test(ua))   os += ' · Honor';
+  else if (/Huawei|HW-/i.test(ua)) os += ' · Huawei';
   db.collection('amasushi_visits').add({
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    device,
-    browser,
-    os
+    device, browser, os
   }).catch(() => {});
 }
 
-// ==========================================
-// منع تسجيل زيارات الأدمن
-// ==========================================
 function logVisitIfNotAdmin() {
   if (localStorage.getItem('isAdmin')) return;
   logVisit();
 }
 
-// ==========================================
-// تسجيل البحث الناجح (بعد ثانيتين - مرة واحدة فقط)
-// ==========================================
-let searchLogTimer;
-let lastLoggedQuery = '';
+let searchLogTimer, lastLoggedQuery = '';
 function logSearch(query) {
   clearTimeout(searchLogTimer);
   searchLogTimer = setTimeout(() => {
@@ -273,18 +730,13 @@ function logSearch(query) {
     if (q.length > 2 && q !== lastLoggedQuery) {
       lastLoggedQuery = q;
       db.collection('amasushi_searches').add({
-        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        query: q
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(), query: q
       }).catch(() => {});
     }
   }, 2000);
 }
 
-// ==========================================
-// تسجيل البحث الفاشل - منطقة مفقودة
-// ==========================================
-let missingLogTimer;
-let lastMissingQuery = '';
+let missingLogTimer, lastMissingQuery = '';
 function logMissingSearch(query) {
   clearTimeout(missingLogTimer);
   missingLogTimer = setTimeout(() => {
@@ -292,31 +744,25 @@ function logMissingSearch(query) {
     if (q.length > 2 && q !== lastMissingQuery) {
       lastMissingQuery = q;
       db.collection('amasushi_missing_searches').add({
-        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        query: q
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(), query: q
       }).catch(() => {});
     }
   }, 2000);
 }
 
-logVisitIfNotAdmin();
-
-// ==========================================
-// تنظيف النصوص للبحث
-// ==========================================
+// ──────────────────────────────────────────────────
+// Arabic Normalization — UNCHANGED
+// ──────────────────────────────────────────────────
 function normalizeArabic(text) {
   if (!text) return "";
   return text.toString()
-    .replace(/[أإآا]/g, 'ا')
-    .replace(/[ىي]/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .replace(/\s+/g, '')
-    .toLowerCase();
+    .replace(/[أإآا]/g, 'ا').replace(/[ىي]/g, 'ي')
+    .replace(/ة/g, 'ه').replace(/\s+/g, '').toLowerCase();
 }
 
-// ==========================================
-// البيانات
-// ==========================================
+// ──────────────────────────────────────────────────
+// Delivery Data — UNCHANGED
+// ──────────────────────────────────────────────────
 const rawData = `2,المنطقة 5,District 5,75
 3,كمبوند لو ريف – القطامية,LE Reve Compound - Katameya,65
 4,المستثمرين الجنوبية - كمبوند النافورة الزرقاء,South Investors - Fountain Blue Compound,65
@@ -516,120 +962,272 @@ const deliveryData = rawData.trim().split('\n').map(line => {
   };
 });
 
-// ==========================================
-// Fuse.js - Fuzzy Search Setup
-// ==========================================
+// Fuse.js init — UNCHANGED
 const fuse = new Fuse(deliveryData, {
   keys: ['ar', 'en', 'searchKey'],
-  threshold: 0.4,      // 0 = دقيق جداً، 1 = أي شيء
-  distance: 100,
-  minMatchCharLength: 2,
-  getFn: (obj, path) => {
-    const val = Fuse.config.getFn(obj, path);
-    return normalizeArabic(val);
-  }
+  threshold: 0.4, distance: 100, minMatchCharLength: 2,
+  getFn: (obj, path) => { const val = Fuse.config.getFn(obj, path); return normalizeArabic(val); }
 });
 
+// ──────────────────────────────────────────────────
+// Search — UNCHANGED
+// ──────────────────────────────────────────────────
 function runSearch() {
   const raw   = document.getElementById('searchInput').value.trim();
   const query = normalizeArabic(raw);
-  const resultsBox = document.getElementById('resultsBox');
+  const box   = document.getElementById('resultsBox');
 
   if (raw === "") {
-    resultsBox.innerHTML = '<div class="no-data">اكتب اسم المكان أو رقم الشيت أو استخدم المايك 🎤..</div>';
+    box.innerHTML = '<div class="no-data">اكتب اسم المكان أو رقم الشيت أو استخدم المايك 🎤..</div>';
     return;
   }
 
-  // بحث بالرقم
   let filtered = [];
-  if (/^\d+$/.test(raw.trim())) {
-    filtered = deliveryData.filter(item => item.rowNumber === raw.trim());
-  }
-
-  // بحث بالاسم لو مش رقم أو مفيش نتيجة
-  if (filtered.length === 0) {
-    filtered = deliveryData.filter(item => item.searchKey.includes(query));
-  }
-
-  // Fuzzy لو لسه مفيش نتيجة
-  if (filtered.length === 0) {
-    const fuseResults = fuse.search(query);
-    filtered = fuseResults.map(r => r.item);
-  }
+  if (/^\d+$/.test(raw.trim())) filtered = deliveryData.filter(i => i.rowNumber === raw.trim());
+  if (!filtered.length) filtered = deliveryData.filter(i => i.searchKey.includes(query));
+  if (!filtered.length) filtered = fuse.search(query).map(r => r.item);
 
   if (filtered.length > 0) {
     logSearch(raw);
-    resultsBox.innerHTML = filtered.map(item => {
-      const priceNum = parseInt(item.price);
+    box.innerHTML = filtered.map(item => {
+      const priceNum   = parseInt(item.price);
       const priceClass = priceNum > 100 ? 'price-tag high' : 'price-tag';
-      const mapQuery = encodeURIComponent((item.ar || item.en) + ' القاهرة الجديدة');
-      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
-      return `
-        <div class="result-item">
-          <div class="area-info">
-            <span class="area-name">${item.ar}</span>
-            <span class="area-en">${item.en}</span>
-            <span class="row-number">📋 شيت رقم: ${item.rowNumber}</span>
-            <a href="${mapUrl}" target="_blank" class="map-btn">📍 عرض على الخريطة</a>
-          </div>
-          <div class="${priceClass}">
-            <span class="price-label">خدمة الطيار</span>
-            ${item.price} ج.م
-          </div>
+      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((item.ar||item.en)+' القاهرة الجديدة')}`;
+      return `<div class="result-item">
+        <div class="area-info">
+          <span class="area-name">${item.ar}</span>
+          <span class="area-en">${item.en}</span>
+          <span class="row-number">📋 شيت رقم: ${item.rowNumber}</span>
+          <a href="${mapUrl}" target="_blank" class="map-btn">📍 عرض على الخريطة</a>
         </div>
-      `;
+        <div class="${priceClass}">
+          <span class="price-label">خدمة الطيار</span>
+          ${item.price} ج.م
+        </div>
+      </div>`;
     }).join('');
   } else {
     logMissingSearch(raw);
-    resultsBox.innerHTML = '<div class="no-data">لم نجد هذا المكان.. جرب كتابته بشكل مختلف 🔍</div>';
+    box.innerHTML = '<div class="no-data">لم نجد هذا المكان.. جرب كتابته بشكل مختلف 🔍</div>';
   }
 }
 
-// ==========================================
-// البحث الصوتي
-// ==========================================
+// ──────────────────────────────────────────────────
+// Voice Search — UNCHANGED
+// ──────────────────────────────────────────────────
 let recognizer = null;
-
 function startVoiceSearch() {
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-    alert('عفواً، متصفحك لا يدعم البحث الصوتي.');
-    return;
+    alert('عفواً، متصفحك لا يدعم البحث الصوتي.'); return;
   }
-
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const micBtn     = document.getElementById('micBtn');
+  const micBtn      = document.getElementById('micBtn');
   const searchInput = document.getElementById('searchInput');
-
-  if (recognizer) {
-    recognizer.stop();
-    recognizer = null;
-    micBtn.classList.remove('listening');
-    return;
-  }
-
+  if (recognizer) { recognizer.stop(); recognizer = null; micBtn.classList.remove('listening'); return; }
   recognizer = new SR();
-  recognizer.lang = 'ar-EG';
-  recognizer.interimResults = false;
+  recognizer.lang = 'ar-EG'; recognizer.interimResults = false;
   micBtn.classList.add('listening');
-
-  recognizer.onresult = (e) => {
-    const spokenText = e.results[0][0].transcript;
-    searchInput.value = spokenText;
-    runSearch();
-  };
-
-  recognizer.onend = () => {
-    micBtn.classList.remove('listening');
-    recognizer = null;
-  };
-
-  recognizer.onerror = () => {
-    micBtn.classList.remove('listening');
-    recognizer = null;
-  };
-
+  recognizer.onresult = e => { searchInput.value = e.results[0][0].transcript; runSearch(); };
+  recognizer.onend    = () => { micBtn.classList.remove('listening'); recognizer = null; };
+  recognizer.onerror  = () => { micBtn.classList.remove('listening'); recognizer = null; };
   recognizer.start();
 }
+
+// ──────────────────────────────────────────────────
+// NEW: Sidebar
+// ──────────────────────────────────────────────────
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sbBackdrop').classList.add('show');
+  document.getElementById('menuBtn').classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sbBackdrop').classList.remove('show');
+  document.getElementById('menuBtn').classList.remove('is-open');
+  document.body.style.overflow = '';
+}
+function toggleAcc(name) {
+  document.getElementById('acc-' + name).classList.toggle('open');
+}
+
+// ──────────────────────────────────────────────────
+// NEW: Firebase Auth
+// ──────────────────────────────────────────────────
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById('sbLoginForm').style.display = 'none';
+    document.getElementById('sbLoggedState').classList.add('show');
+    document.getElementById('loggedEmail').textContent   = user.email || 'مدير';
+    localStorage.setItem('isAdmin', 'true');
+  } else {
+    document.getElementById('sbLoginForm').style.display = 'block';
+    document.getElementById('sbLoggedState').classList.remove('show');
+    localStorage.removeItem('isAdmin');
+    closeAdminDashboard();
+  }
+});
+
+function doLogin() {
+  const email = document.getElementById('aEmail').value.trim();
+  const pass  = document.getElementById('aPass').value;
+  const err   = document.getElementById('aErr');
+  err.style.display = 'none';
+  auth.signInWithEmailAndPassword(email, pass)
+    .catch(() => { err.style.display = 'block'; });
+}
+
+function doLogout() {
+  auth.signOut();
+  closeSidebar();
+}
+
+// ──────────────────────────────────────────────────
+// NEW: Admin Dashboard Overlay
+// ──────────────────────────────────────────────────
+function openAdminDashboard() {
+  closeSidebar();
+  document.getElementById('adminOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  loadDashboard();
+}
+function closeAdminDashboard() {
+  document.getElementById('adminOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+async function loadDashboard() {
+  const body       = document.getElementById('aoDashBody');
+  const now        = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  body.innerHTML   = '<div class="ao-loading">⏳ جاري التحميل...</div>';
+
+  try {
+    // ── Visits ──
+    const vSnap  = await db.collection('amasushi_visits').orderBy('timestamp', 'desc').get();
+    const visits = vSnap.docs.map(d => d.data());
+    const total  = visits.length;
+    const today  = visits.filter(v => v.timestamp?.toDate() >= todayStart).length;
+    const mobile = visits.filter(v => v.device === 'mobile').length;
+    const mobPct = total > 0 ? Math.round(mobile / total * 100) + '%' : '0%';
+
+    // ── Searches today ──
+    let searchesToday = '—';
+    try {
+      const sSnap = await db.collection('amasushi_searches').get();
+      searchesToday = sSnap.docs.map(d => d.data())
+        .filter(s => s.timestamp?.toDate() >= todayStart).length;
+    } catch(e) {}
+
+    // ── OS breakdown ──
+    const osCounts = {};
+    visits.forEach(v => { if(v.os) osCounts[v.os] = (osCounts[v.os] || 0) + 1; });
+    const osColors = ['#e67e22','#3b82f6','#22c55e','#a78bfa','#f59e0b','#ec4899'];
+    const osHtml = Object.entries(osCounts)
+      .sort((a,b) => b[1]-a[1]).slice(0, 6)
+      .map(([lbl, cnt], i) => {
+        const pct = total > 0 ? Math.round(cnt/total*100) : 0;
+        const clr = osColors[i % osColors.length];
+        return `<div class="d-row">
+          <div class="d-lbl">${lbl||'—'}</div>
+          <div class="d-bar-wrap">
+            <div class="d-bar-fill" style="width:${pct}%;background:${clr}"></div>
+          </div>
+          <div class="d-cnt" style="color:${clr}">${cnt}</div>
+        </div>`;
+      }).join('') || '<div class="ao-loading">لا بيانات بعد</div>';
+
+    // ── Recent visits ──
+    const recentHtml = visits.slice(0, 15).map(v => {
+      const t  = v.timestamp?.toDate();
+      const ts = t
+        ? t.toLocaleDateString('ar-EG') + ' ' +
+          t.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})
+        : '—';
+      return `<div class="log-item">
+        <span class="log-dev">📱 ${v.os||'—'} · ${v.browser||'—'} · ${v.device||'—'}</span>
+        <span class="log-time">${ts}</span>
+      </div>`;
+    }).join('') || '<div class="ao-loading">لا زيارات بعد</div>';
+
+    // ── Missing searches ──
+    let missingHtml = '<div class="ao-loading">لا توجد بيانات</div>';
+    try {
+      const mSnap = await db.collection('amasushi_missing_searches').get();
+      const freq  = {};
+      mSnap.docs.map(d => d.data().query || '').forEach(q => {
+        if (q.trim().length > 1) freq[q.trim()] = (freq[q.trim()] || 0) + 1;
+      });
+      const top = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0, 10);
+      missingHtml = top.length > 0
+        ? top.map(([q,c]) =>
+            `<div class="miss-row">
+               <span class="miss-q">${q}</span>
+               <span class="miss-cnt">${c}</span>
+             </div>`).join('')
+        : '<div class="ao-loading">لا مناطق مفقودة 🎉</div>';
+    } catch(e) {}
+
+    // ── Render ──
+    body.innerHTML = `
+      <div class="ao-cards">
+        <div class="ao-card">
+          <div class="ao-card-icon">👁️</div>
+          <div class="ao-card-num">${total}</div>
+          <div class="ao-card-lbl">إجمالي الزيارات</div>
+        </div>
+        <div class="ao-card">
+          <div class="ao-card-icon">📅</div>
+          <div class="ao-card-num">${today}</div>
+          <div class="ao-card-lbl">زيارات اليوم</div>
+        </div>
+        <div class="ao-card">
+          <div class="ao-card-icon">📱</div>
+          <div class="ao-card-num">${mobPct}</div>
+          <div class="ao-card-lbl">من موبايل</div>
+        </div>
+        <div class="ao-card">
+          <div class="ao-card-icon">🔍</div>
+          <div class="ao-card-num">${searchesToday}</div>
+          <div class="ao-card-lbl">بحث اليوم</div>
+        </div>
+      </div>
+
+      <div class="ao-sec">
+        <div class="ao-sec-title">📊 الأجهزة والأنظمة</div>
+        ${osHtml}
+      </div>
+
+      <div class="ao-sec">
+        <div class="ao-sec-title">🕐 آخر الزيارات</div>
+        ${recentHtml}
+      </div>
+
+      <div class="ao-sec">
+        <div class="ao-sec-title">🕳️ مناطق يبحث عنها المندوبون ومش موجودة</div>
+        ${missingHtml}
+      </div>
+
+      <div class="ao-sec">
+        <div class="ao-sec-title">✏️ إدارة الأسعار</div>
+        <button class="coming-soon" disabled>
+          <span>🔒</span>
+          <span>تعديل قائمة الأسعار — قريباً</span>
+        </button>
+      </div>
+    `;
+
+  } catch(e) {
+    body.innerHTML = `<div class="ao-loading">خطأ في تحميل البيانات 😥<br>
+      <small style="color:#475569">${e.message}</small></div>`;
+  }
+}
+
+// ──────────────────────────────────────────────────
+// Init
+// ──────────────────────────────────────────────────
+logVisitIfNotAdmin();
 </script>
 
 </body>
