@@ -19,8 +19,8 @@
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+<!-- firebase-auth-compat.js: Lazy — يُحمَّل فقط عند ضغط "دخول المدير" -->
 
 <style>
 /* ============================================================
@@ -680,7 +680,7 @@ const firebaseConfig = {
   appId:             "1:972743740267:web:24eb04cf828b545a41da2e"
 };
 firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
+let auth = null; // Lazy — يُهيَّأ فقط عند تحميل Auth SDK
 const db   = firebase.firestore();
 
 // ──────────────────────────────────────────────────
@@ -702,25 +702,38 @@ function logVisit() {
   else if (/Mac/i.test(ua))     os = 'Mac';
   const androidMatch = ua.match(/Android\s([0-9.]+)/);
   if (androidMatch) os = 'Android ' + androidMatch[1];
-  if      (/SM-/i.test(ua))     os += ' · Samsung';
-  else if (/CPH/i.test(ua))     os += ' · Oppo';
-  else if (/RMX/i.test(ua))     os += ' · Realme';
-  else if (/\b(M\d{4}K|2\d{9}|21\d{8})/i.test(ua)) os += ' · Xiaomi';
-  else if (/TECNO/i.test(ua))   os += ' · Tecno';
-  else if (/Infinix/i.test(ua)) os += ' · Infinix';
-  else if (/vivo/i.test(ua))    os += ' · Vivo';
-  else if (/HONOR/i.test(ua))   os += ' · Honor';
-  else if (/Huawei|HW-/i.test(ua)) os += ' · Huawei';
+  // استخراج اسم الموديل مباشرة من UA: (Linux; Android X; MODEL)
+  const modelMatch = ua.match(/\(Linux;\s*Android\s*[^;]*;\s*([^)]+?)\s*(?:Build|wv)[^)]*\)/i)
+                  || ua.match(/\(Linux;\s*Android\s*[^;]*;\s*([^);]+)\)/i);
+  if (modelMatch) {
+    const model = modelMatch[1].trim();
+    let brand = '';
+    if      (/^SM-/i.test(model))                     brand = 'Samsung';
+    else if (/Samsung|Galaxy/i.test(model))            brand = 'Samsung';
+    else if (/^CPH/i.test(model))                      brand = 'Oppo';
+    else if (/^RMX/i.test(model))                      brand = 'Realme';
+    else if (/Redmi|POCO/i.test(model))                brand = 'Xiaomi';
+    else if (/\b(M\d{4}K|2\d{9}|21\d{8})\b/i.test(model)) brand = 'Xiaomi';
+    else if (/TECNO/i.test(model))                     brand = 'Tecno';
+    else if (/Infinix/i.test(model))                   brand = 'Infinix';
+    else if (/vivo/i.test(model))                      brand = 'Vivo';
+    else if (/HONOR/i.test(model))                     brand = 'Honor';
+    else if (/HUAWEI|HW-/i.test(model))                brand = 'Huawei';
+    else if (/Pixel/i.test(model))                     brand = 'Google';
+    else if (/moto|XT\d{4}/i.test(model))              brand = 'Motorola';
+    else if (/OnePlus|IN2\d{3}/i.test(model))          brand = 'OnePlus';
+    else if (/Nokia/i.test(model))                     brand = 'Nokia';
+    if (brand) os += ' · ' + brand;
+    else os += ' · ' + model.split(' ')[0]; // fallback: أول كلمة من الموديل
+  }
   db.collection('amasushi_visits').add({
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
     device, browser, os
   }).catch(() => {});
 }
 
-function logVisitIfNotAdmin() {
-  if (localStorage.getItem('isAdmin')) return;
-  logVisit();
-}
+// لا تُستخدم مباشرة — تم نقل المنطق داخل onAuthStateChanged
+let _visitLogged = false;
 
 let searchLogTimer, lastLoggedQuery = '';
 function logSearch(query) {
@@ -1050,26 +1063,46 @@ function closeSidebar() {
 }
 function toggleAcc(name) {
   document.getElementById('acc-' + name).classList.toggle('open');
+  if (name === 'admin') initAuth(); // تحميل Auth SDK عند أول ضغطة فقط
 }
 
 // ──────────────────────────────────────────────────
-// NEW: Firebase Auth
+// NEW: Firebase Auth — Lazy Load
 // ──────────────────────────────────────────────────
-auth.onAuthStateChanged(user => {
-  if (user) {
-    document.getElementById('sbLoginForm').style.display = 'none';
-    document.getElementById('sbLoggedState').classList.add('show');
-    document.getElementById('loggedEmail').textContent   = user.email || 'مدير';
-    localStorage.setItem('isAdmin', 'true');
-  } else {
-    document.getElementById('sbLoginForm').style.display = 'block';
-    document.getElementById('sbLoggedState').classList.remove('show');
-    localStorage.removeItem('isAdmin');
-    closeAdminDashboard();
-  }
-});
+let _authReady = false;
+
+async function initAuth() {
+  if (_authReady) return;
+  _authReady = true;
+
+  // تحميل firebase-auth-compat.js عند الحاجة فقط
+  await new Promise((resolve, reject) => {
+    const s    = document.createElement('script');
+    s.src      = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js';
+    s.onload   = resolve;
+    s.onerror  = reject;
+    document.head.appendChild(s);
+  });
+
+  auth = firebase.auth();
+
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      localStorage.setItem('isAdmin', 'true');
+      document.getElementById('sbLoginForm').style.display = 'none';
+      document.getElementById('sbLoggedState').classList.add('show');
+      document.getElementById('loggedEmail').textContent   = user.email || 'مدير';
+    } else {
+      localStorage.removeItem('isAdmin');
+      document.getElementById('sbLoginForm').style.display = 'block';
+      document.getElementById('sbLoggedState').classList.remove('show');
+      closeAdminDashboard();
+    }
+  });
+}
 
 function doLogin() {
+  if (!auth) return; // Auth SDK لم يتحمّل بعد (حالة نادرة)
   const email = document.getElementById('aEmail').value.trim();
   const pass  = document.getElementById('aPass').value;
   const err   = document.getElementById('aErr');
@@ -1079,6 +1112,7 @@ function doLogin() {
 }
 
 function doLogout() {
+  if (!auth) return;
   auth.signOut();
   closeSidebar();
 }
@@ -1138,8 +1172,8 @@ async function loadDashboard() {
         </div>`;
       }).join('') || '<div class="ao-loading">لا بيانات بعد</div>';
 
-    // ── Recent visits ──
-    const recentHtml = visits.slice(0, 15).map(v => {
+    // ── Recent visits — آخر 7 فقط مع scroll ──
+    const recentHtml = visits.slice(0, 7).map(v => {
       const t  = v.timestamp?.toDate();
       const ts = t
         ? t.toLocaleDateString('ar-EG') + ' ' +
@@ -1200,8 +1234,10 @@ async function loadDashboard() {
       </div>
 
       <div class="ao-sec">
-        <div class="ao-sec-title">🕐 آخر الزيارات</div>
-        ${recentHtml}
+        <div class="ao-sec-title">🕐 آخر الزيارات <span style="color:var(--adm-muted);font-weight:400">(آخر 7)</span></div>
+        <div style="max-height:220px;overflow-y:auto;border-radius:8px">
+          ${recentHtml}
+        </div>
       </div>
 
       <div class="ao-sec">
@@ -1209,13 +1245,6 @@ async function loadDashboard() {
         ${missingHtml}
       </div>
 
-      <div class="ao-sec">
-        <div class="ao-sec-title">✏️ إدارة الأسعار</div>
-        <button class="coming-soon" disabled>
-          <span>🔒</span>
-          <span>تعديل قائمة الأسعار — قريباً</span>
-        </button>
-      </div>
     `;
 
   } catch(e) {
@@ -1225,11 +1254,14 @@ async function loadDashboard() {
 }
 
 // ──────────────────────────────────────────────────
-// Init
+// Init — تسجيل الزيارة فوراً بدون انتظار Auth
 // ──────────────────────────────────────────────────
-logVisitIfNotAdmin();
+// localStorage.isAdmin يُحفظ عند نجاح Login ويُحذف عند Logout
+// يكفي للتمييز بدون أي network request لـ Auth
+if (!localStorage.getItem('isAdmin')) {
+  logVisit();
+}
 </script>
 
 </body>
 </html>
- 
