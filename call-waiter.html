@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9fa">
+<meta name="theme-color" media="(prefers-color-scheme: dark)"  content="#0f1117">
+<title>نداء الويتر — اما سوشي</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+
+<style>
+/* ── Variables ── */
+:root {
+  --bg:           #f8f9fa;
+  --surface:      #ffffff;
+  --text-1:       #1e293b;
+  --text-2:       #64748b;
+  --text-3:       #cbd5e1;
+  --primary:      #e67e22;
+  --primary-dark: #d35400;
+  --primary-glow: rgba(230,126,34,0.22);
+  --shadow-card:  0 8px 28px rgba(0,0,0,0.07);
+  --radius:       20px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #0f1117;
+    --surface:     #1a1d27;
+    --text-1:      #f1f5f9;
+    --text-2:      #94a3b8;
+    --text-3:      #334155;
+    --shadow-card: 0 8px 28px rgba(0,0,0,0.35);
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Cairo', sans-serif;
+  background: var(--bg);
+  color: var(--text-1);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ── Layout ── */
+.wrap {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Logo ── */
+.logo-img {
+  width: 86px; height: 86px;
+  border-radius: 50%;
+  border: 3px solid var(--primary);
+  object-fit: cover;
+  box-shadow: 0 0 0 5px var(--primary-glow);
+  margin-bottom: 14px;
+}
+.logo-fallback {
+  width: 86px; height: 86px;
+  border-radius: 50%;
+  background: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40px;
+  margin-bottom: 14px;
+  box-shadow: 0 0 0 5px var(--primary-glow);
+}
+.brand-name { font-size: 20px; font-weight: 900; color: var(--primary); }
+.brand-sub  { font-size: 13px; color: var(--text-2); margin-bottom: 30px; margin-top: 2px; }
+
+/* ── Table card ── */
+.table-card {
+  width: 100%;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 22px 20px 18px;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+  margin-bottom: 20px;
+}
+.table-lbl {
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.table-num {
+  font-size: 76px;
+  font-weight: 900;
+  color: var(--primary);
+  line-height: 1;
+}
+
+/* ── Call button ── */
+.call-btn {
+  width: 100%;
+  padding: 22px 16px;
+  background: var(--primary);
+  border: none;
+  border-radius: var(--radius);
+  color: white;
+  font-family: 'Cairo', sans-serif;
+  font-size: 22px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 12px 40px var(--primary-glow);
+  transition: transform 0.15s, background 0.2s, box-shadow 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.call-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  background: var(--primary-dark);
+}
+.call-btn:disabled {
+  background: var(--text-3);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+/* ── Status messages ── */
+.success-msg {
+  font-size: 14px;
+  font-weight: 700;
+  color: #22c55e;
+  margin-bottom: 6px;
+  display: none;
+}
+.countdown-msg {
+  font-size: 12px;
+  color: var(--text-2);
+  display: none;
+  margin-bottom: 16px;
+}
+
+/* ── Coming soon ── */
+.coming-soon {
+  font-size: 12px;
+  color: var(--text-3);
+  border: 1px dashed var(--text-3);
+  border-radius: 12px;
+  padding: 11px 16px;
+  margin-top: 12px;
+  width: 100%;
+  text-align: center;
+}
+
+/* ── Error page ── */
+.error-wrap {
+  text-align: center;
+  padding: 20px;
+}
+.error-icon { font-size: 54px; margin-bottom: 16px; }
+.error-title {
+  font-size: 18px; font-weight: 900;
+  color: var(--primary); margin-bottom: 10px;
+}
+.error-text { font-size: 14px; color: var(--text-2); line-height: 1.8; }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app"></div>
+
+<script>
+// ── Firebase Init ──
+const firebaseConfig = {
+  apiKey:            "AIzaSyBRSTsBy_2rgfqWASSFAF3jNXe2fgvnWw8",
+  authDomain:        "amasushi-prices.firebaseapp.com",
+  projectId:         "amasushi-prices",
+  storageBucket:     "amasushi-prices.firebasestorage.app",
+  messagingSenderId: "972743740267",
+  appId:             "1:972743740267:web:24eb04cf828b545a41da2e"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ── Read table from URL ──
+const params = new URLSearchParams(window.location.search);
+const tableRaw = params.get('table');
+const tableNum = parseInt(tableRaw);
+const app = document.getElementById('app');
+
+// ── Validate ──
+if (!tableRaw || isNaN(tableNum) || tableNum < 1) {
+  app.innerHTML = `
+    <div class="error-wrap">
+      <div class="error-icon">⚠️</div>
+      <div class="error-title">اما سوشي</div>
+      <div class="error-text">
+        رابط غير صحيح<br>
+        يرجى مسح الـ QR الخاص بطاولتك
+      </div>
+    </div>`;
+} else {
+  // ── Render main UI ──
+  app.innerHTML = `
+    <img src="./logo.jpg" class="logo-img"
+      onerror="this.outerHTML='<div class=\\'logo-fallback\\'>🍣</div>'">
+    <div class="brand-name">اما سوشي</div>
+    <div class="brand-sub">التجمع الخامس</div>
+
+    <div class="table-card">
+      <div class="table-lbl">الترابيزة رقم</div>
+      <div class="table-num">${tableNum}</div>
+    </div>
+
+    <button class="call-btn" id="callBtn" onclick="callWaiter()">
+      <span>🔔</span><span>نداء الويتر</span>
+    </button>
+
+    <div class="success-msg"  id="successMsg">✅ تم إرسال الطلب — الويتر في الطريق</div>
+    <div class="countdown-msg" id="countMsg"></div>
+
+    <div class="coming-soon">✨ تحديثات قوية قادمة قريبًا</div>
+  `;
+}
+
+// ── Cooldown logic ──
+let cooldown = false;
+let countTimer = null;
+
+async function callWaiter() {
+  if (cooldown) return;
+  cooldown = true;
+
+  const btn      = document.getElementById('callBtn');
+  const success  = document.getElementById('successMsg');
+  const countMsg = document.getElementById('countMsg');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span><span>جاري الإرسال...</span>';
+
+  try {
+    await db.collection('amasushi_waiter_calls').add({
+      table:     tableNum,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+      status:    'pending'
+    });
+
+    btn.innerHTML       = '<span>✅</span><span>تم إرسال الطلب</span>';
+    success.style.display  = 'block';
+    countMsg.style.display = 'block';
+
+    let secs = 20;
+    countMsg.textContent = `يمكنك الطلب مجدداً بعد ${secs} ثانية`;
+
+    countTimer = setInterval(() => {
+      secs--;
+      if (secs > 0) {
+        countMsg.textContent = `يمكنك الطلب مجدداً بعد ${secs} ثانية`;
+      } else {
+        clearInterval(countTimer);
+        cooldown = false;
+        btn.disabled = false;
+        btn.innerHTML = '<span>🔔</span><span>نداء الويتر</span>';
+        success.style.display  = 'none';
+        countMsg.style.display = 'none';
+      }
+    }, 1000);
+
+  } catch (e) {
+    cooldown = false;
+    btn.disabled = false;
+    btn.innerHTML = '<span>🔔</span><span>نداء الويتر</span>';
+    alert('خطأ في الإرسال — تحقق من الاتصال');
+  }
+}
+</script>
+</body>
+</html>
