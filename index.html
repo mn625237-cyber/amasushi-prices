@@ -43,14 +43,14 @@
   --map-btn:        #1a73e8;
   --badge-blue:     #3498db;
 
-  /* Admin / Sidebar — always dark (not affected by media query) */
-  --adm-bg:         #0f1117;
-  --adm-surface:    #1a1d27;
-  --adm-surface-2:  #111827;
-  --adm-border:     #2d3148;
-  --adm-text:       #e2e8f0;
+  /* Admin / Sidebar — Light Mode defaults */
+  --adm-bg:         #f8fafc;
+  --adm-surface:    #ffffff;
+  --adm-surface-2:  #f1f5f9;
+  --adm-border:     #e2e8f0;
+  --adm-text:       #1e293b;
   --adm-muted:      #64748b;
-  --adm-secondary:  #94a3b8;
+  --adm-secondary:  #475569;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,6 +63,15 @@
     --border:      #374151;
     --primary-glow: rgba(230, 126, 34, 0.12);
     --card-shadow: 0 10px 30px rgba(0,0,0,0.35);
+
+    /* Admin / Sidebar — Dark Mode */
+    --adm-bg:        #0f1117;
+    --adm-surface:   #1a1d27;
+    --adm-surface-2: #111827;
+    --adm-border:    #2d3148;
+    --adm-text:      #e2e8f0;
+    --adm-muted:     #64748b;
+    --adm-secondary: #94a3b8;
   }
 }
 
@@ -233,8 +242,8 @@ h1 {
    ============================================================ */
 #menuBtn {
   position: fixed;
-  bottom: 24px; right: 20px;
-  width: 50px; height: 50px;
+  top: 16px; right: 16px;
+  width: 44px; height: 44px;
   border-radius: 50%;
   background: var(--adm-surface);
   border: 1px solid var(--adm-border);
@@ -585,7 +594,7 @@ h1 {
           </div>
           <div class="about-row">
             <span class="about-key">الإصدار</span>
-            <span class="about-val">Nabil 2.0</span>
+            <span class="about-val">v2.0</span>
           </div>
           <div class="about-row">
             <span class="about-key">المناطق</span>
