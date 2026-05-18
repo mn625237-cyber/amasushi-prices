@@ -21,6 +21,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
 <!-- firebase-auth-compat.js: Lazy — يُحمَّل فقط عند ضغط "دخول المدير" -->
+<!-- firebase-messaging-compat.js: Lazy — يُحمَّل فقط عند تسجيل دخول الأدمن -->
 
 <style>
 /* ============================================================
@@ -739,6 +740,17 @@ function logVisit() {
     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
     device, browser, os
   }).catch(() => {});
+
+  // ── Push Notification — fire and forget ──
+  fetch('/api/notify', {
+    method: 'POST',
+    headers: {
+      'Content-Type':    'application/json',
+      'X-Notify-Secret': 'amasushi2026secret',
+      'X-Timestamp':     String(Date.now())
+    },
+    body: JSON.stringify({ os, browser, device })
+  }).catch(() => {});
 }
 
 // لا تُستخدم مباشرة — تم نقل المنطق داخل onAuthStateChanged
@@ -1101,6 +1113,7 @@ async function initAuth() {
       document.getElementById('sbLoginForm').style.display = 'none';
       document.getElementById('sbLoggedState').classList.add('show');
       document.getElementById('loggedEmail').textContent   = user.email || 'مدير';
+      setTimeout(() => subscribeFCM(), 2000);
     } else {
       localStorage.removeItem('isAdmin');
       document.getElementById('sbLoginForm').style.display = 'block';
@@ -1259,6 +1272,54 @@ async function loadDashboard() {
   } catch(e) {
     body.innerHTML = `<div class="ao-loading">خطأ في تحميل البيانات 😥<br>
       <small style="color:#475569">${e.message}</small></div>`;
+  }
+}
+
+// ──────────────────────────────────────────────────
+// NEW: FCM Subscribe — للأدمن فقط
+// ──────────────────────────────────────────────────
+const VAPID_KEY = 'BKD3q5RAcbUQGAUaVChKtiPK0nIY6V-NtFhh0Rk9cFhEMQ4QX9IyKqiy5VpTddcx7-M3G3aHcKlslOF3b8beK58';
+
+async function subscribeFCM() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    // تحميل firebase-messaging-compat.js عند الحاجة فقط
+    if (!firebase.messaging) {
+      await new Promise((resolve, reject) => {
+        const s    = document.createElement('script');
+        s.src      = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js';
+        s.onload   = resolve;
+        s.onerror  = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    await navigator.serviceWorker.ready;
+
+    const messaging = firebase.messaging();
+    const token = await messaging.getToken({
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: reg
+    });
+    if (!token) return;
+
+    await db.collection('fcm_tokens').doc('admin').set({
+      token,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    messaging.onMessage(payload => {
+      const t = payload.notification?.title || '';
+      const b = payload.notification?.body  || '';
+      console.log('FCM foreground:', t, b);
+    });
+
+  } catch(e) {
+    console.warn('FCM subscribe error:', e);
   }
 }
 
