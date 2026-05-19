@@ -1305,6 +1305,8 @@ async function subscribeFCM() {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: reg
     });
+    alert('Permission: ' + Notification.permission);
+    alert('Token: ' + (token ? token.substring(0, 20) : 'NULL'));
     if (!token) return;
 
     await db.collection('fcm_tokens').doc('admin').set({
