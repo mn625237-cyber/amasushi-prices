@@ -20,8 +20,6 @@ messaging.onBackgroundMessage(payload => {
     body,
     icon:               '/logo.jpg',
     badge:              '/logo.jpg',
-    tag:                'visit-notif',
-    renotify:           true,
     requireInteraction: false,
     vibrate:            [200, 100, 200],
     data: { url: 'https://amasushi-prices.vercel.app' }
