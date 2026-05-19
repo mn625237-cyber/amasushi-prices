@@ -1319,7 +1319,7 @@ async function subscribeFCM() {
     });
 
   } catch(e) {
-    console.warn('FCM subscribe error:', e);
+    alert('FCM Error: ' + e.message);
   }
 }
 
