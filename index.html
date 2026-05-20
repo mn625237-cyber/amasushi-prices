@@ -1311,10 +1311,15 @@ async function subscribeFCM() {
 
     const currentUser = firebase.auth().currentUser;
     alert('User before save: ' + (currentUser ? currentUser.email : 'NULL'));
-    await db.collection('fcm_tokens').doc('admin').set({
-      token,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    try {
+      await db.collection('fcm_tokens').doc('admin').set({
+        token,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      alert('Token saved successfully!');
+    } catch(saveErr) {
+      alert('Save Error: ' + saveErr.message);
+    }
 
     messaging.onMessage(payload => {
       const t = payload.notification?.title || '';
