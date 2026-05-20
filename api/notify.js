@@ -33,7 +33,7 @@ module.exports = async (req, res) => {
 
   // ── 2. Origin Check ──
   const origin = req.headers['origin'] || '';
-  if (!origin.includes('amasushi-prices.vercel.app')) {
+  if (!origin.includes('amasushi-prices')) {
     return res.status(403).json({ error: 'Forbidden origin' });
   }
 
