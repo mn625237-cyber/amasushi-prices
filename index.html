@@ -1309,6 +1309,8 @@ async function subscribeFCM() {
     alert('Token: ' + (token ? token.substring(0, 20) : 'NULL'));
     if (!token) return;
 
+    const currentUser = firebase.auth().currentUser;
+    alert('User before save: ' + (currentUser ? currentUser.email : 'NULL'));
     await db.collection('fcm_tokens').doc('admin').set({
       token,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
