@@ -595,7 +595,7 @@ h1 {
           </div>
           <div class="about-row">
             <span class="about-key">الإصدار</span>
-            <span class="about-val">NABIL</span>
+            <span class="about-val">v2.0</span>
           </div>
           <div class="about-row">
             <span class="about-key">المناطق</span>
@@ -1305,21 +1305,12 @@ async function subscribeFCM() {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: reg
     });
-    alert('Permission: ' + Notification.permission);
-    alert('Token: ' + (token ? token.substring(0, 20) : 'NULL'));
     if (!token) return;
 
-    const currentUser = firebase.auth().currentUser;
-    alert('User before save: ' + (currentUser ? currentUser.email : 'NULL'));
-    try {
-      await db.collection('fcm_tokens').doc('admin').set({
-        token,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      alert('Token saved successfully!');
-    } catch(saveErr) {
-      alert('Save Error: ' + saveErr.message);
-    }
+    await db.collection('fcm_tokens').doc('admin').set({
+      token,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
     messaging.onMessage(payload => {
       const t = payload.notification?.title || '';
@@ -1328,17 +1319,21 @@ async function subscribeFCM() {
     });
 
   } catch(e) {
-    alert('FCM Error: ' + e.message);
+    console.warn('FCM subscribe error:', e);
   }
 }
 
 // ──────────────────────────────────────────────────
-// Init — تسجيل الزيارة فوراً بدون انتظار Auth
+// Init — تسجيل الزيارة مرة واحدة فقط لكل جلسة
 // ──────────────────────────────────────────────────
-// localStorage.isAdmin يُحفظ عند نجاح Login ويُحذف عند Logout
-// يكفي للتمييز بدون أي network request لـ Auth
+// localStorage.isAdmin  → يُحفظ عند Login ويُحذف عند Logout
+// sessionStorage.visitLogged → يُحفظ عند أول دخول ويُمسح عند إغلاق التاب
+// النتيجة: زيارة واحدة = إشعار واحد فقط
 if (!localStorage.getItem('isAdmin')) {
-  logVisit();
+  if (!sessionStorage.getItem('visitLogged')) {
+    sessionStorage.setItem('visitLogged', '1');
+    logVisit();
+  }
 }
 </script>
 
