@@ -753,9 +753,6 @@ function logVisit() {
   }).catch(() => {});
 }
 
-// لا تُستخدم مباشرة — تم نقل المنطق داخل onAuthStateChanged
-let _visitLogged = false;
-
 let searchLogTimer, lastLoggedQuery = '';
 function logSearch(query) {
   clearTimeout(searchLogTimer);
@@ -1312,11 +1309,7 @@ async function subscribeFCM() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    messaging.onMessage(payload => {
-      const t = payload.notification?.title || '';
-      const b = payload.notification?.body  || '';
-      console.log('FCM foreground:', t, b);
-    });
+    messaging.onMessage(() => {});
 
   } catch(e) {
     console.warn('FCM subscribe error:', e);
