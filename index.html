@@ -1317,14 +1317,16 @@ async function subscribeFCM() {
 }
 
 // ──────────────────────────────────────────────────
-// Init — تسجيل الزيارة مرة واحدة فقط لكل جلسة
+// Init — تسجيل الزيارة مرة واحدة كل 30 دقيقة
 // ──────────────────────────────────────────────────
-// localStorage.isAdmin  → يُحفظ عند Login ويُحذف عند Logout
-// sessionStorage.visitLogged → يُحفظ عند أول دخول ويُمسح عند إغلاق التاب
-// النتيجة: زيارة واحدة = إشعار واحد فقط
+// localStorage.isAdmin → يمنع تسجيل زيارات الأدمن
+// localStorage.lastVisitNotification → cooldown 30 دقيقة
+// النتيجة: إشعار واحد لكل 30 دقيقة مهما فتح تابات أو رجع
 if (!localStorage.getItem('isAdmin')) {
-  if (!sessionStorage.getItem('visitLogged')) {
-    sessionStorage.setItem('visitLogged', '1');
+  const COOLDOWN = 30 * 60 * 1000; // 30 دقيقة
+  const lastVisit = parseInt(localStorage.getItem('lastVisitNotification') || '0');
+  if (Date.now() - lastVisit > COOLDOWN) {
+    localStorage.setItem('lastVisitNotification', String(Date.now()));
     logVisit();
   }
 }
