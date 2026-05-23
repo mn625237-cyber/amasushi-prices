@@ -288,10 +288,19 @@ h1 {
   z-index: 300;
   display: flex; flex-direction: column;
   transform: translateX(105%);
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   overflow: hidden;
+  will-change: transform;
 }
 #sidebar.open { transform: translateX(0); }
+
+/* منع تحديد النص أثناء السحب */
+body.sb-dragging,
+body.sb-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: grabbing !important;
+}
 
 /* Header */
 .sb-hdr {
@@ -1381,38 +1390,153 @@ function clearSearch() {
 }
 
 // ──────────────────────────────────────────────────
-// Swipe to Close Sidebar
+// Swipe to Close Sidebar — Production Level
+// Physics: Telegram / Uber Eats style
 // ──────────────────────────────────────────────────
 function initSidebarSwipe() {
-  const sidebar = document.getElementById('sidebar');
-  let startX = 0, currentX = 0, isDragging = false;
-  const THRESHOLD = 80; // بيكسل كافية للإغلاق
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sbBackdrop');
+  const menuBtn  = document.getElementById('menuBtn');
 
-  sidebar.addEventListener('touchstart', e => {
-    startX    = e.touches[0].clientX;
-    isDragging = true;
-    sidebar.style.transition = 'none';
+  const EASING   = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const SNAP_DUR = 280;  // ms مدة الـ snap animation
+  const DIR_LOCK = 8;    // px قبل تحديد الاتجاه
+  const THRESH   = 0.35; // 35% من عرض الـ sidebar = يُقفل
+
+  let dragging = false;
+  let lockDir  = false;
+  let isHoriz  = false;
+  let startX   = 0;
+  let startY   = 0;
+  let curX     = 0;
+  let sbW      = 0; // عرض الـ sidebar لحظة بدء السحب
+
+  // ── مزامنة شفافية الـ Backdrop مع موضع الـ Sidebar ──
+  function syncBackdrop(progress) {
+    // progress: 1 = مفتوح كامل, 0 = مغلق كامل
+    backdrop.style.background    = `rgba(0,0,0,${(0.6 * progress).toFixed(3)})`;
+    backdrop.style.pointerEvents = progress > 0.01 ? 'all' : 'none';
+  }
+
+  // ── تحديد موضع الـ Sidebar مباشرة أثناء السحب ──
+  function setPos(dx) {
+    // dx: 0 = مفتوح, sbW = مغلق
+    const x = Math.min(Math.max(dx, 0), sbW);
+    sidebar.style.transform = `translateX(${x}px)`;
+    syncBackdrop(1 - x / sbW);
+  }
+
+  // ── Snap للإغلاق مع Animation ──
+  function snapClose() {
+    sidebar.style.transition  = `transform ${SNAP_DUR}ms ${EASING}`;
+    backdrop.style.transition = `background ${SNAP_DUR}ms ${EASING}`;
+    sidebar.style.transform   = `translateX(${sbW}px)`;
+    syncBackdrop(0);
+
+    setTimeout(() => {
+      // تعطيل الـ transition قبل تنظيف الـ styles لمنع Flash
+      sidebar.style.transition = 'none';
+
+      // تنظيف Classes
+      sidebar.classList.remove('open');
+      backdrop.classList.remove('show');
+      menuBtn.classList.remove('is-open');
+      document.body.style.overflow = '';
+
+      // تنظيف كل الـ inline styles في الـ frame التالي
+      requestAnimationFrame(() => {
+        sidebar.style.cssText  = '';
+        backdrop.style.cssText = '';
+      });
+    }, SNAP_DUR + 15);
+  }
+
+  // ── Snap للبقاء مفتوحاً مع Animation ──
+  function snapOpen() {
+    sidebar.style.transition  = `transform ${SNAP_DUR}ms ${EASING}`;
+    backdrop.style.transition = `background ${SNAP_DUR}ms ${EASING}`;
+    sidebar.style.transform   = 'translateX(0px)';
+    syncBackdrop(1);
+
+    setTimeout(() => {
+      sidebar.style.transition = 'none';
+      requestAnimationFrame(() => {
+        sidebar.style.transform  = '';
+        sidebar.style.transition = '';
+        backdrop.style.cssText   = '';
+      });
+    }, SNAP_DUR + 15);
+  }
+
+  // ── Pointer Down — بدء التتبع ──
+  window.addEventListener('pointerdown', e => {
+    if (!sidebar.classList.contains('open')) return;
+    sbW      = sidebar.offsetWidth;
+    dragging = true;
+    lockDir  = false;
+    isHoriz  = false;
+    startX   = e.clientX;
+    startY   = e.clientY;
+    curX     = e.clientX;
+    // تجميد الـ CSS transitions أثناء السحب
+    sidebar.style.transition  = 'none';
+    backdrop.style.transition = 'none';
+    document.body.classList.add('sb-dragging');
   }, { passive: true });
 
-  sidebar.addEventListener('touchmove', e => {
-    if (!isDragging) return;
-    currentX  = e.touches[0].clientX;
-    const diff = currentX - startX;
-    if (diff > 0) sidebar.style.transform = `translateX(${diff}px)`;
-  }, { passive: true });
+  // ── Pointer Move — تحريك مباشر ──
+  window.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    curX = e.clientX;
 
-  sidebar.addEventListener('touchend', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    sidebar.style.transition = '';
-    const diff = currentX - startX;
-    if (diff > THRESHOLD) {
-      closeSidebar();
-    } else {
-      sidebar.style.transform = sidebar.classList.contains('open') ? 'translateX(0)' : 'translateX(105%)';
+    const dX = curX - startX;
+    const dY = Math.abs(e.clientY - startY);
+
+    // تحديد الاتجاه بعد DIR_LOCK بيكسل
+    if (!lockDir) {
+      if (Math.abs(dX) < DIR_LOCK && dY < DIR_LOCK) return;
+      isHoriz = Math.abs(dX) > dY;
+      lockDir = true;
+
+      // لو عمودي (scroll) أو سحب لليسار = أوقف وارجع للـ scroll الطبيعي
+      if (!isHoriz || dX < 0) {
+        dragging = false;
+        sidebar.style.transition  = '';
+        backdrop.style.transition = '';
+        document.body.classList.remove('sb-dragging');
+        return;
+      }
     }
-    startX = currentX = 0;
-  });
+
+    if (!isHoriz) return;
+
+    // منع الـ scroll الطبيعي فقط أثناء السحب الأفقي المؤكد
+    e.preventDefault();
+    setPos(dX);
+  }, { passive: false });
+
+  // ── Pointer Up / Cancel — قرار الـ Snap ──
+  function onRelease() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('sb-dragging');
+
+    const dX = curX - startX;
+
+    // لو الاتجاه تحدد أفقي وتجاوز الـ THRESHOLD → أغلق، غير كذلك → ارجع مفتوح
+    if (isHoriz && dX > sbW * THRESH) {
+      snapClose();
+    } else {
+      snapOpen();
+    }
+
+    // reset كامل
+    startX = startY = curX = 0;
+    lockDir = isHoriz = false;
+  }
+
+  window.addEventListener('pointerup',     onRelease);
+  window.addEventListener('pointercancel', onRelease);
 }
 
 // ──────────────────────────────────────────────────
