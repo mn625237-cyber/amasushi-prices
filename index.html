@@ -524,6 +524,36 @@ h1 {
 
 /* Loading */
 .ao-loading { color: var(--adm-muted); font-size: 13px; text-align: center; padding: 24px; }
+
+/* ── Skeleton Loading ── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--adm-surface) 25%,
+    var(--adm-border)  50%,
+    var(--adm-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 8px;
+}
+
+/* ── Clear Button ── */
+.clear-btn {
+  position: absolute; left: 15px; top: 50%;
+  transform: translateY(-50%);
+  background: var(--text-3); border: none;
+  width: 24px; height: 24px; border-radius: 50%;
+  color: white; font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s, opacity 0.15s;
+  line-height: 1;
+}
+.clear-btn:active { background: var(--primary); }
 </style>
 </head>
 <body>
@@ -542,6 +572,7 @@ h1 {
       placeholder="ابحث عن منطقة (مثلاً: ميفيدا)"
       oninput="runSearch()">
     <button id="micBtn" class="mic-btn" onclick="startVoiceSearch()">🎤</button>
+    <button id="clearBtn" class="clear-btn" onclick="clearSearch()" style="display:none" aria-label="مسح البحث">✕</button>
   </div>
 
   <div class="results-container" id="resultsBox">
@@ -1008,6 +1039,9 @@ function runSearch() {
   const query = normalizeArabic(raw);
   const box   = document.getElementById('resultsBox');
 
+  // إظهار/إخفاء زر المسح
+  document.getElementById('clearBtn').style.display = raw.length > 0 ? 'flex' : 'none';
+
   if (raw === "") {
     box.innerHTML = '<div class="no-data">اكتب اسم المكان أو رقم الشيت أو استخدم المايك 🎤..</div>';
     return;
@@ -1154,7 +1188,25 @@ async function loadDashboard() {
   const body       = document.getElementById('aoDashBody');
   const now        = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  body.innerHTML   = '<div class="ao-loading">⏳ جاري التحميل...</div>';
+  body.innerHTML = `
+    <div class="ao-cards">
+      <div class="ao-card"><div class="skeleton" style="height:58px;border-radius:10px"></div></div>
+      <div class="ao-card"><div class="skeleton" style="height:58px;border-radius:10px"></div></div>
+      <div class="ao-card"><div class="skeleton" style="height:58px;border-radius:10px"></div></div>
+      <div class="ao-card"><div class="skeleton" style="height:58px;border-radius:10px"></div></div>
+    </div>
+    <div class="ao-sec">
+      <div class="skeleton" style="height:11px;width:35%;margin-bottom:16px"></div>
+      <div class="skeleton" style="height:9px;margin-bottom:11px"></div>
+      <div class="skeleton" style="height:9px;width:75%;margin-bottom:11px"></div>
+      <div class="skeleton" style="height:9px;width:55%"></div>
+    </div>
+    <div class="ao-sec">
+      <div class="skeleton" style="height:11px;width:40%;margin-bottom:16px"></div>
+      <div class="skeleton" style="height:9px;margin-bottom:11px"></div>
+      <div class="skeleton" style="height:9px;width:80%;margin-bottom:11px"></div>
+      <div class="skeleton" style="height:9px;width:60%"></div>
+    </div>`;
 
   try {
     // ── Visits ──
@@ -1317,6 +1369,53 @@ async function subscribeFCM() {
 }
 
 // ──────────────────────────────────────────────────
+// Clear Search
+// ──────────────────────────────────────────────────
+function clearSearch() {
+  const input = document.getElementById('searchInput');
+  input.value = '';
+  document.getElementById('clearBtn').style.display = 'none';
+  document.getElementById('resultsBox').innerHTML =
+    '<div class="no-data">اكتب اسم المكان أو استخدم المايك 🎤..</div>';
+  input.focus();
+}
+
+// ──────────────────────────────────────────────────
+// Swipe to Close Sidebar
+// ──────────────────────────────────────────────────
+function initSidebarSwipe() {
+  const sidebar = document.getElementById('sidebar');
+  let startX = 0, currentX = 0, isDragging = false;
+  const THRESHOLD = 80; // بيكسل كافية للإغلاق
+
+  sidebar.addEventListener('touchstart', e => {
+    startX    = e.touches[0].clientX;
+    isDragging = true;
+    sidebar.style.transition = 'none';
+  }, { passive: true });
+
+  sidebar.addEventListener('touchmove', e => {
+    if (!isDragging) return;
+    currentX  = e.touches[0].clientX;
+    const diff = currentX - startX;
+    if (diff > 0) sidebar.style.transform = `translateX(${diff}px)`;
+  }, { passive: true });
+
+  sidebar.addEventListener('touchend', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    sidebar.style.transition = '';
+    const diff = currentX - startX;
+    if (diff > THRESHOLD) {
+      closeSidebar();
+    } else {
+      sidebar.style.transform = sidebar.classList.contains('open') ? 'translateX(0)' : 'translateX(105%)';
+    }
+    startX = currentX = 0;
+  });
+}
+
+// ──────────────────────────────────────────────────
 // Init — تسجيل الزيارة مرة واحدة كل 30 دقيقة
 // ──────────────────────────────────────────────────
 // localStorage.isAdmin → يمنع تسجيل زيارات الأدمن
@@ -1330,6 +1429,8 @@ if (!localStorage.getItem('isAdmin')) {
     logVisit();
   }
 }
+
+initSidebarSwipe();
 </script>
 
 </body>
