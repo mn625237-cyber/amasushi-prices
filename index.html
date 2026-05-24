@@ -269,7 +269,7 @@ h1 {
   background: transparent;
   z-index: 200;
   pointer-events: none;
-  transition: background 0.3s;
+  /* JS controls all transitions */
 }
 #sbBackdrop.show {
   background: rgba(0,0,0,0.6);
@@ -288,7 +288,7 @@ h1 {
   z-index: 300;
   display: flex; flex-direction: column;
   transform: translateX(105%);
-  transition: transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* JS controls all transitions */
   overflow: hidden;
   will-change: transform;
 }
@@ -1110,17 +1110,69 @@ function startVoiceSearch() {
 // ──────────────────────────────────────────────────
 // NEW: Sidebar
 // ──────────────────────────────────────────────────
+// ──────────────────────────────────────────────────
+// Sidebar Open / Close (Button-triggered, animated)
+// ──────────────────────────────────────────────────
+const _SB_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+const _SB_DUR    = 300; // ms
+
 function openSidebar() {
-  document.getElementById('sidebar').classList.add('open');
-  document.getElementById('sbBackdrop').classList.add('show');
-  document.getElementById('menuBtn').classList.add('is-open');
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sbBackdrop');
+  const menuBtn  = document.getElementById('menuBtn');
+
+  // Animate in
+  sidebar.style.transition  = `transform ${_SB_DUR}ms ${_SB_EASING}`;
+  backdrop.style.transition = `background ${_SB_DUR}ms ${_SB_EASING}`;
+  sidebar.style.transform   = 'translateX(0px)';
+  backdrop.style.background = 'rgba(0,0,0,0.6)';
+  backdrop.style.pointerEvents = 'all';
+
+  menuBtn.classList.add('is-open');
   document.body.style.overflow = 'hidden';
+
+  // After animation: hand control back to CSS class system
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      sidebar.style.transition = 'none';
+      sidebar.classList.add('open');
+      backdrop.classList.add('show');
+      requestAnimationFrame(() => {
+        sidebar.style.transform  = '';
+        sidebar.style.transition = '';
+        backdrop.style.cssText   = '';
+      });
+    });
+  }, _SB_DUR + 15);
 }
+
 function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sbBackdrop').classList.remove('show');
-  document.getElementById('menuBtn').classList.remove('is-open');
-  document.body.style.overflow = '';
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sbBackdrop');
+  const menuBtn  = document.getElementById('menuBtn');
+
+  // Animate out
+  sidebar.style.transition  = `transform ${_SB_DUR}ms ${_SB_EASING}`;
+  backdrop.style.transition = `background ${_SB_DUR}ms ${_SB_EASING}`;
+  sidebar.style.transform   = 'translateX(105%)';
+  backdrop.style.background = 'rgba(0,0,0,0)';
+  backdrop.style.pointerEvents = 'none';
+
+  // After animation: hand control back to CSS class system
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      sidebar.style.transition = 'none';
+      sidebar.classList.remove('open');
+      backdrop.classList.remove('show');
+      menuBtn.classList.remove('is-open');
+      document.body.style.overflow = '';
+      requestAnimationFrame(() => {
+        sidebar.style.transform  = '';
+        sidebar.style.transition = '';
+        backdrop.style.cssText   = '';
+      });
+    });
+  }, _SB_DUR + 15);
 }
 function toggleAcc(name) {
   document.getElementById('acc-' + name).classList.toggle('open');
@@ -1389,102 +1441,149 @@ function clearSearch() {
   input.focus();
 }
 
-// ──────────────────────────────────────────────────
-// Swipe to Close Sidebar — Production Level
-// Physics: Telegram / Uber Eats style
-// ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// SIDEBAR SWIPE SYSTEM — Production Level
+// Open:  swipe LEFT  from right edge zone (22% of screen)
+// Close: swipe RIGHT from anywhere when sidebar is open
+// Physics: Realtime drag → Direction lock → Snap decision
+// Pattern: Telegram / iOS Drawer / Android Native Drawer
+// ═══════════════════════════════════════════════════════
 function initSidebarSwipe() {
   const sidebar  = document.getElementById('sidebar');
   const backdrop = document.getElementById('sbBackdrop');
   const menuBtn  = document.getElementById('menuBtn');
 
-  const EASING   = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-  const SNAP_DUR = 280;  // ms مدة الـ snap animation
-  const DIR_LOCK = 8;    // px قبل تحديد الاتجاه
-  const THRESH   = 0.35; // 35% من عرض الـ sidebar = يُقفل
+  // ─── Configuration ────────────────────────────────────
+  const EASING    = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  const SNAP_MS   = 290;   // snap animation duration (ms)
+  const DIR_LOCK  = 10;    // px of movement before direction is locked
+  const MIN_SWIPE = 12;    // px of horizontal intent before gesture activates
+  const OPEN_ZONE = 0.22;  // right 22% of screen = open gesture trigger zone
+  const THRESHOLD = 0.38;  // >= 38% visible → snap open; < 38% → snap close
 
-  let dragging = false;
-  let lockDir  = false;
-  let isHoriz  = false;
-  let startX   = 0;
-  let startY   = 0;
-  let curX     = 0;
-  let sbW      = 0; // عرض الـ sidebar لحظة بدء السحب
+  // ─── Drag State ───────────────────────────────────────
+  let dragging  = false;   // is a drag currently active?
+  let dirLocked = false;   // has direction been determined?
+  let isHoriz   = false;   // confirmed horizontal gesture?
+  let gesture   = null;    // 'open' | 'close' | null
+  let startX    = 0;
+  let startY    = 0;
+  let curX      = 0;
+  let curTrans  = 0;       // current translateX in px (0=open, sbW=closed)
+  let sbW       = 0;       // sidebar width captured at drag start
 
-  // ── مزامنة شفافية الـ Backdrop مع موضع الـ Sidebar ──
-  function syncBackdrop(progress) {
-    // progress: 1 = مفتوح كامل, 0 = مغلق كامل
+  // ─── Helper: clamp ────────────────────────────────────
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+  // ─── Helper: is sidebar open via CSS class? ───────────
+  const isOpen = () => sidebar.classList.contains('open');
+
+  // ─── Overlay Synchronization ──────────────────────────
+  // Keeps backdrop opacity in sync with sidebar position during drag
+  // progress: 1.0 = fully open, 0.0 = fully closed
+  function syncOverlay(progress) {
     backdrop.style.background    = `rgba(0,0,0,${(0.6 * progress).toFixed(3)})`;
     backdrop.style.pointerEvents = progress > 0.01 ? 'all' : 'none';
   }
 
-  // ── تحديد موضع الـ Sidebar مباشرة أثناء السحب ──
-  function setPos(dx) {
-    // dx: 0 = مفتوح, sbW = مغلق
-    const x = Math.min(Math.max(dx, 0), sbW);
-    sidebar.style.transform = `translateX(${x}px)`;
-    syncBackdrop(1 - x / sbW);
+  // ─── Drag Calculations ────────────────────────────────
+  // Moves sidebar to exact px position and syncs overlay simultaneously
+  function applyDragPos(x) {
+    curTrans = clamp(x, 0, sbW);
+    sidebar.style.transform = `translateX(${curTrans}px)`;
+    syncOverlay(1 - curTrans / sbW);
   }
 
-  // ── Snap للإغلاق مع Animation ──
-  function snapClose() {
-    sidebar.style.transition  = `transform ${SNAP_DUR}ms ${EASING}`;
-    backdrop.style.transition = `background ${SNAP_DUR}ms ${EASING}`;
-    sidebar.style.transform   = `translateX(${sbW}px)`;
-    syncBackdrop(0);
-
-    setTimeout(() => {
-      // تعطيل الـ transition قبل تنظيف الـ styles لمنع Flash
-      sidebar.style.transition = 'none';
-
-      // تنظيف Classes
-      sidebar.classList.remove('open');
-      backdrop.classList.remove('show');
-      menuBtn.classList.remove('is-open');
-      document.body.style.overflow = '';
-
-      // تنظيف كل الـ inline styles في الـ frame التالي
-      requestAnimationFrame(() => {
-        sidebar.style.cssText  = '';
-        backdrop.style.cssText = '';
-      });
-    }, SNAP_DUR + 15);
-  }
-
-  // ── Snap للبقاء مفتوحاً مع Animation ──
+  // ─── Snap to Open (animated) ──────────────────────────
   function snapOpen() {
-    sidebar.style.transition  = `transform ${SNAP_DUR}ms ${EASING}`;
-    backdrop.style.transition = `background ${SNAP_DUR}ms ${EASING}`;
+    sidebar.style.transition  = `transform ${SNAP_MS}ms ${EASING}`;
+    backdrop.style.transition = `background ${SNAP_MS}ms ${EASING}`;
     sidebar.style.transform   = 'translateX(0px)';
-    syncBackdrop(1);
+    syncOverlay(1);
+    menuBtn.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
 
+    // Transfer control back to CSS class system after animation completes
     setTimeout(() => {
-      sidebar.style.transition = 'none';
       requestAnimationFrame(() => {
-        sidebar.style.transform  = '';
-        sidebar.style.transition = '';
-        backdrop.style.cssText   = '';
+        sidebar.style.transition = 'none';
+        sidebar.classList.add('open');
+        backdrop.classList.add('show');
+        requestAnimationFrame(() => {
+          sidebar.style.transform  = '';
+          sidebar.style.transition = '';
+          backdrop.style.cssText   = '';
+        });
       });
-    }, SNAP_DUR + 15);
+    }, SNAP_MS + 15);
   }
 
-  // ── Pointer Down — بدء التتبع ──
+  // ─── Snap to Close (animated) ─────────────────────────
+  function snapClose() {
+    sidebar.style.transition  = `transform ${SNAP_MS}ms ${EASING}`;
+    backdrop.style.transition = `background ${SNAP_MS}ms ${EASING}`;
+    sidebar.style.transform   = 'translateX(105%)';
+    syncOverlay(0);
+
+    // Transfer control back to CSS class system after animation completes
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        sidebar.style.transition = 'none';
+        sidebar.classList.remove('open');
+        backdrop.classList.remove('show');
+        menuBtn.classList.remove('is-open');
+        document.body.style.overflow = '';
+        requestAnimationFrame(() => {
+          sidebar.style.transform  = '';
+          sidebar.style.transition = '';
+          backdrop.style.cssText   = '';
+        });
+      });
+    }, SNAP_MS + 15);
+  }
+
+  // ─── Pointer Down — Gesture Start ─────────────────────
   window.addEventListener('pointerdown', e => {
-    if (!sidebar.classList.contains('open')) return;
-    sbW      = sidebar.offsetWidth;
-    dragging = true;
-    lockDir  = false;
-    isHoriz  = false;
-    startX   = e.clientX;
-    startY   = e.clientY;
-    curX     = e.clientX;
-    // تجميد الـ CSS transitions أثناء السحب
+    // Skip: non-primary button (right-click, middle-click)
+    if (e.button && e.button !== 0) return;
+    // Skip: text inputs — preserve native text selection behavior
+    if (e.target.closest('input, textarea, select')) return;
+    // Skip: menu button — has its own click handler
+    if (e.target.closest('#menuBtn')) return;
+    // Skip: if already dragging
+    if (dragging) return;
+
+    sbW = sidebar.offsetWidth || 280;
+
+    const open     = isOpen();
+    const fromEdge = e.clientX > window.innerWidth * (1 - OPEN_ZONE);
+
+    // Open gesture: only from right edge zone (avoids conflict with app content)
+    // Close gesture: anywhere when sidebar is open
+    if (!open && !fromEdge) return;
+
+    // Initialize drag state
+    dragging  = true;
+    dirLocked = false;
+    isHoriz   = false;
+    gesture   = null;
+    startX    = e.clientX;
+    startY    = e.clientY;
+    curX      = e.clientX;
+    curTrans  = open ? 0 : sbW;
+
+    // Freeze CSS transitions for direct finger tracking (no lag)
     sidebar.style.transition  = 'none';
     backdrop.style.transition = 'none';
+
+    // Set inline position mirroring current visual state
+    sidebar.style.transform = `translateX(${curTrans}px)`;
+    syncOverlay(1 - curTrans / sbW);
+
     document.body.classList.add('sb-dragging');
   }, { passive: true });
 
-  // ── Pointer Move — تحريك مباشر ──
+  // ─── Pointer Move — Realtime Drag ─────────────────────
   window.addEventListener('pointermove', e => {
     if (!dragging) return;
     curX = e.clientX;
@@ -1492,47 +1591,80 @@ function initSidebarSwipe() {
     const dX = curX - startX;
     const dY = Math.abs(e.clientY - startY);
 
-    // تحديد الاتجاه بعد DIR_LOCK بيكسل
-    if (!lockDir) {
-      if (Math.abs(dX) < DIR_LOCK && dY < DIR_LOCK) return;
-      isHoriz = Math.abs(dX) > dY;
-      lockDir = true;
+    // ── Direction Detection ──
+    // Wait for DIR_LOCK px of movement before committing to a direction
+    // This prevents false triggers from small diagonal touches
+    if (!dirLocked) {
+      if (Math.abs(dX) < DIR_LOCK && dY < DIR_LOCK) return; // still undecided
 
-      // لو عمودي (scroll) أو سحب لليسار = أوقف وارجع للـ scroll الطبيعي
-      if (!isHoriz || dX < 0) {
+      isHoriz   = Math.abs(dX) > dY;
+      dirLocked = true;
+
+      if (!isHoriz) {
+        // Vertical scroll detected — abort drag, restore CSS control
         dragging = false;
-        sidebar.style.transition  = '';
-        backdrop.style.transition = '';
+        sidebar.style.transition = '';
+        sidebar.style.transform  = '';
+        backdrop.style.cssText   = '';
+        document.body.classList.remove('sb-dragging');
+        return;
+      }
+
+      // ── Open/Close Thresholds (gesture type determination) ──
+      const open = isOpen();
+      if (!open && dX < -MIN_SWIPE)     gesture = 'open';   // LEFT swipe → open
+      else if (open && dX > MIN_SWIPE)  gesture = 'close';  // RIGHT swipe → close
+      else {
+        // Wrong direction — abort drag cleanly
+        dragging = false;
+        sidebar.style.transition = '';
+        sidebar.style.transform  = '';
+        backdrop.style.cssText   = '';
         document.body.classList.remove('sb-dragging');
         return;
       }
     }
 
-    if (!isHoriz) return;
+    if (!isHoriz || !gesture) return;
 
-    // منع الـ scroll الطبيعي فقط أثناء السحب الأفقي المؤكد
+    // Prevent vertical scroll while confirmed horizontal gesture is active
     e.preventDefault();
-    setPos(dX);
+
+    // ── Drag Calculations ──
+    // RTL right sidebar: translateX(0) = open, translateX(sbW) = closed
+    // Open:  sidebar starts at sbW (off-screen right), dX is negative → sbW + dX → 0
+    // Close: sidebar starts at 0 (fully open),         dX is positive → 0 + dX → sbW
+    const nextTrans = gesture === 'open' ? sbW + dX : dX;
+    applyDragPos(nextTrans);
   }, { passive: false });
 
-  // ── Pointer Up / Cancel — قرار الـ Snap ──
+  // ─── Pointer Up / Cancel — Snap Decision ──────────────
   function onRelease() {
     if (!dragging) return;
     dragging = false;
     document.body.classList.remove('sb-dragging');
 
-    const dX = curX - startX;
-
-    // لو الاتجاه تحدد أفقي وتجاوز الـ THRESHOLD → أغلق، غير كذلك → ارجع مفتوح
-    if (isHoriz && dX > sbW * THRESH) {
-      snapClose();
-    } else {
-      snapOpen();
+    // No valid gesture (tap, not drag) — restore state, let click handlers run
+    if (!gesture) {
+      sidebar.style.cssText  = '';
+      backdrop.style.cssText = '';
+      return;
     }
 
-    // reset كامل
-    startX = startY = curX = 0;
-    lockDir = isHoriz = false;
+    // ── Open/Close Thresholds (snap decision) ──
+    // progress: 1.0 = fully open, 0.0 = fully closed
+    const progress = 1 - curTrans / sbW;
+
+    if (progress >= THRESHOLD) {
+      snapOpen();
+    } else {
+      snapClose();
+    }
+
+    // Full state reset
+    startX = startY = curX = curTrans = 0;
+    dirLocked = isHoriz = false;
+    gesture = null;
   }
 
   window.addEventListener('pointerup',     onRelease);
