@@ -90,6 +90,7 @@ body {
   display: flex;
   justify-content: center;
   touch-action: manipulation;
+  touch-action: pan-y;
   /* Prevents flicker on theme change */
   transition: background-color 0.25s, color 0.25s;
 }
@@ -266,13 +267,14 @@ h1 {
    ============================================================ */
 #sbBackdrop {
   position: fixed; inset: 0;
-  background: transparent;
+  background: rgba(0,0,0,0.6);
+  opacity: 0;
   z-index: 200;
   pointer-events: none;
-  /* JS controls all transitions */
+  /* JS controls all transitions — opacity is GPU-composited */
 }
 #sbBackdrop.show {
-  background: rgba(0,0,0,0.6);
+  opacity: 1;
   pointer-events: all;
 }
 
@@ -324,7 +326,7 @@ body.sb-dragging * {
 .sb-close-btn:active { background: #374151; }
 
 /* Body */
-.sb-body { flex: 1; overflow-y: auto; }
+.sb-body { flex: 1; overflow-y: auto; touch-action: pan-y; }
 
 /* Accordion sections */
 .sb-acc {
@@ -1123,9 +1125,9 @@ function openSidebar() {
 
   // Animate in
   sidebar.style.transition  = `transform ${_SB_DUR}ms ${_SB_EASING}`;
-  backdrop.style.transition = `background ${_SB_DUR}ms ${_SB_EASING}`;
+  backdrop.style.transition = `opacity ${_SB_DUR}ms ${_SB_EASING}`;
   sidebar.style.transform   = 'translateX(0px)';
-  backdrop.style.background = 'rgba(0,0,0,0.6)';
+  backdrop.style.opacity    = '1';
   backdrop.style.pointerEvents = 'all';
 
   menuBtn.classList.add('is-open');
@@ -1140,7 +1142,9 @@ function openSidebar() {
       requestAnimationFrame(() => {
         sidebar.style.transform  = '';
         sidebar.style.transition = '';
-        backdrop.style.cssText   = '';
+        backdrop.style.opacity      = '';
+        backdrop.style.transition   = '';
+        backdrop.style.pointerEvents = '';
       });
     });
   }, _SB_DUR + 15);
@@ -1153,9 +1157,9 @@ function closeSidebar() {
 
   // Animate out
   sidebar.style.transition  = `transform ${_SB_DUR}ms ${_SB_EASING}`;
-  backdrop.style.transition = `background ${_SB_DUR}ms ${_SB_EASING}`;
+  backdrop.style.transition = `opacity ${_SB_DUR}ms ${_SB_EASING}`;
   sidebar.style.transform   = 'translateX(105%)';
-  backdrop.style.background = 'rgba(0,0,0,0)';
+  backdrop.style.opacity    = '0';
   backdrop.style.pointerEvents = 'none';
 
   // After animation: hand control back to CSS class system
@@ -1169,7 +1173,9 @@ function closeSidebar() {
       requestAnimationFrame(() => {
         sidebar.style.transform  = '';
         sidebar.style.transition = '';
-        backdrop.style.cssText   = '';
+        backdrop.style.opacity      = '';
+        backdrop.style.transition   = '';
+        backdrop.style.pointerEvents = '';
       });
     });
   }, _SB_DUR + 15);
@@ -1480,9 +1486,10 @@ function initSidebarSwipe() {
 
   // ─── Overlay Synchronization ──────────────────────────
   // Keeps backdrop opacity in sync with sidebar position during drag
+  // Uses element opacity (GPU-composited) instead of background-color
   // progress: 1.0 = fully open, 0.0 = fully closed
   function syncOverlay(progress) {
-    backdrop.style.background    = `rgba(0,0,0,${(0.6 * progress).toFixed(3)})`;
+    backdrop.style.opacity       = progress.toFixed(3);
     backdrop.style.pointerEvents = progress > 0.01 ? 'all' : 'none';
   }
 
@@ -1497,9 +1504,10 @@ function initSidebarSwipe() {
   // ─── Snap to Open (animated) ──────────────────────────
   function snapOpen() {
     sidebar.style.transition  = `transform ${SNAP_MS}ms ${EASING}`;
-    backdrop.style.transition = `background ${SNAP_MS}ms ${EASING}`;
+    backdrop.style.transition = `opacity ${SNAP_MS}ms ${EASING}`;
     sidebar.style.transform   = 'translateX(0px)';
-    syncOverlay(1);
+    backdrop.style.opacity    = '1';
+    backdrop.style.pointerEvents = 'all';
     menuBtn.classList.add('is-open');
     document.body.style.overflow = 'hidden';
 
@@ -1512,7 +1520,9 @@ function initSidebarSwipe() {
         requestAnimationFrame(() => {
           sidebar.style.transform  = '';
           sidebar.style.transition = '';
-          backdrop.style.cssText   = '';
+          backdrop.style.opacity      = '';
+          backdrop.style.transition   = '';
+          backdrop.style.pointerEvents = '';
         });
       });
     }, SNAP_MS + 15);
@@ -1521,9 +1531,10 @@ function initSidebarSwipe() {
   // ─── Snap to Close (animated) ─────────────────────────
   function snapClose() {
     sidebar.style.transition  = `transform ${SNAP_MS}ms ${EASING}`;
-    backdrop.style.transition = `background ${SNAP_MS}ms ${EASING}`;
+    backdrop.style.transition = `opacity ${SNAP_MS}ms ${EASING}`;
     sidebar.style.transform   = 'translateX(105%)';
-    syncOverlay(0);
+    backdrop.style.opacity    = '0';
+    backdrop.style.pointerEvents = 'none';
 
     // Transfer control back to CSS class system after animation completes
     setTimeout(() => {
@@ -1536,7 +1547,9 @@ function initSidebarSwipe() {
         requestAnimationFrame(() => {
           sidebar.style.transform  = '';
           sidebar.style.transition = '';
-          backdrop.style.cssText   = '';
+          backdrop.style.opacity      = '';
+          backdrop.style.transition   = '';
+          backdrop.style.pointerEvents = '';
         });
       });
     }, SNAP_MS + 15);
