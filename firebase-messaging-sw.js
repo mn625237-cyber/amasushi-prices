@@ -10,22 +10,36 @@ firebase.initializeApp({
   appId:             "1:972743740267:web:24eb04cf828b545a41da2e"
 });
 
+// ── SW Lifecycle ──
+// skipWaiting: يمنع الـ stale SW من التعلق بعد update
+// clients.claim: يضمن أن الـ SW الجديد يتحكم فوراً في كل tabs
+self.addEventListener('install',  ()  => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
+
 const messaging = firebase.messaging();
 
+// ── Background Message Handler ──
+// يُستدعى فقط عندما الـ app في الخلفية أو مغلق
+// data-only payload: FCM لا يعرض إشعاراً تلقائياً — نحن المسؤولون عن العرض هنا
+// tag: 'visit-notif' → يمنع stacking — الإشعار الجديد يستبدل القديم
+// renotify: false → لا صوت/اهتزاز إضافي لو الإشعار لم يُغلق بعد
 messaging.onBackgroundMessage(payload => {
-  const title = payload.notification?.title || '🛵 زيارة جديدة';
-  const body  = payload.notification?.body  || '';
+  const title = payload.data?.title || '🛵 زيارة جديدة';
+  const body  = payload.data?.body  || '';
 
   return self.registration.showNotification(title, {
     body,
-    icon:               '/logo.jpg',
-    badge:              '/logo.jpg',
+    tag:              'visit-notif',
+    renotify:         false,
+    icon:             '/logo.jpg',
+    badge:            '/logo.jpg',
     requireInteraction: false,
-    vibrate:            [200, 100, 200],
+    vibrate:          [200, 100, 200],
     data: { url: 'https://amasushi-prices.vercel.app' }
   });
 });
 
+// ── Notification Click ──
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   e.waitUntil(
