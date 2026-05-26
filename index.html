@@ -1405,11 +1405,18 @@ async function loadDashboard() {
 
 // ──────────────────────────────────────────────────
 // NEW: FCM Subscribe — للأدمن فقط
+// singleton guard: window.__fcmInitialized يمنع تكرار الاستدعاء
+// onAuthStateChanged يمكن أن يُطلق subscribeFCM أكثر من مرة — هذا يمنع ذلك
 // ──────────────────────────────────────────────────
 const VAPID_KEY = 'BKD3q5RAcbUQGAUaVChKtiPK0nIY6V-NtFhh0Rk9cFhEMQ4QX9IyKqiy5VpTddcx7-M3G3aHcKlslOF3b8beK58';
 
 async function subscribeFCM() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  // Singleton guard — يمنع register/getToken/listener أكثر من مرة
+  if (window.__fcmInitialized) return;
+  window.__fcmInitialized = true;
+
   try {
     // تحميل firebase-messaging-compat.js عند الحاجة فقط
     if (!firebase.messaging) {
@@ -1423,7 +1430,10 @@ async function subscribeFCM() {
     }
 
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
+    if (perm !== 'granted') {
+      window.__fcmInitialized = false; // يسمح بإعادة المحاولة لو رفض ثم وافق
+      return;
+    }
 
     const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
     await navigator.serviceWorker.ready;
@@ -1440,9 +1450,11 @@ async function subscribeFCM() {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
 
-    messaging.onMessage(() => {});
+    // لا نحتاج onMessage هنا — الـ app هو الـ admin فقط
+    // والإشعارات تظهر في الخلفية عبر SW فقط (data-only payload)
 
   } catch(e) {
+    window.__fcmInitialized = false; // يسمح بإعادة المحاولة عند خطأ
     console.warn('FCM subscribe error:', e);
   }
 }
