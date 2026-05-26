@@ -76,22 +76,18 @@ module.exports = async (req, res) => {
   const notifTitle = '🛵 زيارة جديدة — اما سوشي';
   const notifBody  = `${os} · ${browser} · ${device} · ${time}`;
 
-  // ── 6. إرسال FCM ──
+  // ── 6. إرسال FCM — data-only payload ──
+  // data-only: يمنع FCM من عرض إشعار تلقائي
+  // SW هو الوحيد المسؤول عن العرض عبر onBackgroundMessage
   try {
     await admin.messaging().send({
       token,
-      notification: {
+      data: {
         title: notifTitle,
         body:  notifBody
       },
       webpush: {
         headers: { Urgency: 'high' },
-        notification: {
-          icon:               '/logo.jpg',
-          badge:              '/logo.jpg',
-          requireInteraction: false,
-          vibrate:            [200, 100, 200]
-        },
         fcmOptions: {
           link: 'https://amasushi-prices.vercel.app'
         }
