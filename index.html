@@ -1413,48 +1413,82 @@ const VAPID_KEY = 'BKD3q5RAcbUQGAUaVChKtiPK0nIY6V-NtFhh0Rk9cFhEMQ4QX9IyKqiy5VpTd
 async function subscribeFCM() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
 
-  // Singleton guard — يمنع register/getToken/listener أكثر من مرة
+  // ── Singleton: in-process guard ──
+  // يمنع re-entry لو onAuthStateChanged يُطلق الدالة مرتين في نفس الجلسة
   if (window.__fcmInitialized) return;
   window.__fcmInitialized = true;
 
+  // ── Multi-tab dedupe via localStorage lock ──
+  // يمنع تابين مفتوحَيْن من تنفيذ subscribe في نفس الوقت
+  const LOCK_KEY = 'fcm_subscribe_lock';
+  const LOCK_TTL = 30000; // 30 ثانية
+  const existingLock = parseInt(localStorage.getItem(LOCK_KEY) || '0');
+  if (Date.now() - existingLock < LOCK_TTL) {
+    window.__fcmInitialized = false; // الـ tab الثاني ينتظر ولا يُعيد الـ guard
+    return;
+  }
+  localStorage.setItem(LOCK_KEY, String(Date.now()));
+
   try {
-    // تحميل firebase-messaging-compat.js عند الحاجة فقط
+    // ── تحميل Messaging SDK (lazy) ──
     if (!firebase.messaging) {
       await new Promise((resolve, reject) => {
-        const s    = document.createElement('script');
-        s.src      = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js';
-        s.onload   = resolve;
-        s.onerror  = reject;
+        const s  = document.createElement('script');
+        s.src    = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js';
+        s.onload = resolve;
+        s.onerror = reject;
         document.head.appendChild(s);
       });
     }
 
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') {
-      window.__fcmInitialized = false; // يسمح بإعادة المحاولة لو رفض ثم وافق
+      window.__fcmInitialized = false;
+      localStorage.removeItem(LOCK_KEY);
       return;
     }
 
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    // ── getRegistration أولاً — لا تُعيد register لو موجود ──
+    // يمنع إنشاء SW registration مكرر في كل login
+    let reg = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
+    if (!reg) {
+      reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/'
+      });
+    }
     await navigator.serviceWorker.ready;
 
     const messaging = firebase.messaging();
-    const token = await messaging.getToken({
+    const newToken  = await messaging.getToken({
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: reg
     });
-    if (!token) return;
+    if (!newToken) return;
 
-    await db.collection('fcm_tokens').doc('admin').set({
-      token,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    // ── Token refresh: update Firestore فقط لو تغيّر ──
+    // يمنع Firestore writes غير ضرورية في كل login
+    const tokenDoc = await db.collection('fcm_tokens').doc('admin').get();
+    const oldToken  = tokenDoc.exists ? tokenDoc.data()?.token : null;
 
-    // لا نحتاج onMessage هنا — الـ app هو الـ admin فقط
-    // والإشعارات تظهر في الخلفية عبر SW فقط (data-only payload)
+    if (newToken !== oldToken) {
+      await db.collection('fcm_tokens').doc('admin').set({
+        token:     newToken,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    // ── Cleanup stale registrations ──
+    // لو يوجد SW قديم على scope مختلف، احذفه
+    const allRegs = await navigator.serviceWorker.getRegistrations();
+    for (const r of allRegs) {
+      if (r !== reg && r.scope.includes(location.origin)) {
+        await r.unregister().catch(() => {});
+      }
+    }
 
   } catch(e) {
-    window.__fcmInitialized = false; // يسمح بإعادة المحاولة عند خطأ
+    window.__fcmInitialized = false;
+    localStorage.removeItem(LOCK_KEY);
     console.warn('FCM subscribe error:', e);
   }
 }
