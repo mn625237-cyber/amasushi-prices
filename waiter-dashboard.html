@@ -312,13 +312,17 @@ function updateBadge(count) {
 
 
 // ── Mark done ──
+// Optimistic UI: نشيل الكارد فوراً من الشاشة بغض النظر عن نتيجة Firestore
 async function markDone(id) {
+  const card = document.getElementById('c-' + id);
+  if (card) card.remove();
   try {
     await db.collection('amasushi_waiter_calls')
       .doc(id)
       .update({ status: 'done' });
   } catch(e) {
-    alert('خطأ في التحديث');
+    // silent fail — الكارد اتشالت من الشاشة، الـ Firestore هيتصحح في أول sync
+    console.warn('markDone error:', e.message);
   }
 }
 
