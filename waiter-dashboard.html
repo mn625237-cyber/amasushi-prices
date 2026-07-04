@@ -350,21 +350,21 @@ db.collection('amasushi_waiter_calls')
       }
     });
 
-    // Render all cards
+    // Render pending cards only — done cards are removed immediately
     const calls   = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const pending = calls.filter(c => c.status === 'pending').length;
+    const pending = calls.filter(c => c.status === 'pending');
 
-    updateBadge(pending);
+    updateBadge(pending.length);
 
     const list = document.getElementById('list');
-    if (calls.length === 0) {
+    if (pending.length === 0) {
       list.innerHTML = `
         <div class="empty">
           <div class="empty-icon">🍽️</div>
           <div class="empty-txt">لا توجد طلبات حالياً</div>
         </div>`;
     } else {
-      list.innerHTML = calls.map(renderCard).join('');
+      list.innerHTML = pending.map(renderCard).join('');
     }
   });
 </script>
