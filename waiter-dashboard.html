@@ -312,8 +312,13 @@ function updateBadge(count) {
 
 
 // ── Mark done ──
-// Optimistic UI: نشيل الكارد فوراً من الشاشة بغض النظر عن نتيجة Firestore
+// Optimistic UI + race-condition guard:
+// الكارد يتشال فوراً من الشاشة، ويُستبعد من كل render لحد ما Firestore يأكد status='done'
+// بدون الـ Set دي، أي onSnapshot تاني (بسبب طلب مندوب آخر) ممكن يرسم الكارد تاني من الكاش المحلي القديم
+const optimisticDone = new Set();
+
 async function markDone(id) {
+  optimisticDone.add(id);
   const card = document.getElementById('c-' + id);
   if (card) card.remove();
   try {
@@ -321,7 +326,8 @@ async function markDone(id) {
       .doc(id)
       .update({ status: 'done' });
   } catch(e) {
-    // silent fail — الكارد اتشالت من الشاشة، الـ Firestore هيتصحح في أول sync
+    // فشل التحديث فعلياً — نلغي الاستبعاد ونسمح للكارد يرجع في أول sync
+    optimisticDone.delete(id);
     console.warn('markDone error:', e.message);
   }
 }
@@ -354,9 +360,9 @@ db.collection('amasushi_waiter_calls')
       }
     });
 
-    // Render pending cards only — done cards are removed immediately
+    // Render pending cards only — done cards + optimistically-removed cards are excluded
     const calls   = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const pending = calls.filter(c => c.status === 'pending');
+    const pending = calls.filter(c => c.status === 'pending' && !optimisticDone.has(c.id));
 
     updateBadge(pending.length);
 
