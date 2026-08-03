@@ -572,9 +572,118 @@ body.sb-dragging * {
   line-height: 1;
 }
 .clear-btn:active { background: var(--primary); }
+
+/* ============================================================
+   INTRO OVERLAY — يظهر عند كل فتح للموقع
+   ============================================================ */
+#introOverlay {
+  position: fixed; inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  transition: background 0.25s;
+}
+#introOverlay .intro-logo-wrap {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+#introOverlay .intro-blade {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--primary) 20%, var(--primary-hover) 50%, var(--primary) 80%, transparent);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 20px 2px var(--primary-glow);
+  animation: introBladeSweep 0.7s cubic-bezier(.2,.9,.3,1) forwards;
+}
+#introOverlay .intro-logo-text {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 900;
+  font-size: min(11vw, 80px);
+  color: var(--text-1);
+  display: flex; gap: .06em;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  direction: ltr;
+}
+#introOverlay .intro-logo-text span {
+  display: inline-block;
+  opacity: 0;
+  filter: blur(6px);
+  animation: introLetterIn 0.6s cubic-bezier(.2,.8,.3,1) forwards;
+}
+#introOverlay .intro-logo-text span:nth-child(1){animation-delay:.55s;}
+#introOverlay .intro-logo-text span:nth-child(2){animation-delay:.61s;}
+#introOverlay .intro-logo-text span:nth-child(3){animation-delay:.67s;}
+#introOverlay .intro-logo-text span:nth-child(4){animation-delay:.73s;}
+#introOverlay .intro-logo-text span:nth-child(5){animation-delay:.79s;}
+#introOverlay .intro-logo-text span:nth-child(6){animation-delay:.85s;}
+#introOverlay .intro-logo-text span:nth-child(7){animation-delay:.91s;}
+#introOverlay .intro-logo-text span:nth-child(8){animation-delay:.97s;}
+#introOverlay .intro-logo-text span:nth-child(9){animation-delay:1.03s;}
+#introOverlay .intro-underline {
+  width: 0; height: 4px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-hover));
+  animation: introGrowLine .5s ease-out forwards;
+  animation-delay: 1.15s;
+}
+#introOverlay .intro-tagline {
+  font-family: 'Cairo', sans-serif;
+  font-weight: 400;
+  font-size: min(4vw, 20px);
+  color: var(--primary);
+  letter-spacing: 6px;
+  opacity: 0;
+  animation: introFadeUp .6s ease-out forwards;
+  animation-delay: 1.5s;
+}
+#introOverlay.intro-hide {
+  animation: introOverlayFadeOut .4s ease-in forwards;
+  animation-delay: 1.9s;
+  pointer-events: none;
+}
+@keyframes introBladeSweep {
+  0%   { width: 0; opacity: 1; }
+  55%  { width: 70vw; opacity: 1; }
+  100% { width: 70vw; opacity: 0; }
+}
+@keyframes introLetterIn {
+  0%   { opacity: 0; filter: blur(6px); transform: translateY(10px); }
+  100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+@keyframes introGrowLine {
+  from { width: 0; }
+  to   { width: 180px; }
+}
+@keyframes introFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes introOverlayFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #introOverlay, #introOverlay * { animation-duration: 0.01ms !important; animation-delay: 0s !important; }
+}
 </style>
 </head>
 <body>
+
+<!-- ============================================================
+     INTRO OVERLAY — يظهر عند كل فتح للموقع ثم يختفي تلقائياً
+     ============================================================ -->
+<div id="introOverlay">
+  <div class="intro-logo-wrap">
+    <div class="intro-blade"></div>
+    <div class="intro-logo-text">
+      <span>A</span><span>M</span><span>A</span><span>&nbsp;&nbsp;</span><span>S</span><span>U</span><span>S</span><span>H</span><span>I</span>
+    </div>
+    <div class="intro-underline"></div>
+    <div class="intro-tagline">DELIVERY</div>
+  </div>
+</div>
 
 <!-- ============================================================
      MAIN APP — لا يتغير شيء هنا
@@ -1879,6 +1988,20 @@ if (!localStorage.getItem('isAdmin')) {
 }
 
 initSidebarSwipe();
+
+// ──────────────────────────────────────────────────
+// Intro Overlay — إزالة كاملة من الـ DOM بعد الأنيميشن
+// يمنع أي تعارض مع touch events أو الـ gesture engine بعد الاختفاء
+// ──────────────────────────────────────────────────
+(function initIntroOverlay() {
+  const overlay = document.getElementById('introOverlay');
+  if (!overlay) return;
+  const TOTAL_MS = 2300; // مدة الأنيميشن الكاملة + fade out
+  setTimeout(() => {
+    overlay.classList.add('intro-hide');
+    setTimeout(() => overlay.remove(), 500);
+  }, TOTAL_MS);
+})();
 </script>
 
 </body>
