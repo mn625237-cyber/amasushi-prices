@@ -1172,12 +1172,43 @@ const deliveryData = rawData.trim().split('\n').map(line => {
   };
 });
 
-// Fuse.js init — UNCHANGED
-const fuse = new Fuse(deliveryData, {
+let customAreas = [];
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
+}
+
+// Fuse.js init
+const fuseOptions = {
   keys: ['ar', 'en', 'searchKey'],
   threshold: 0.4, distance: 100, minMatchCharLength: 2,
   getFn: (obj, path) => { const val = Fuse.config.getFn(obj, path); return normalizeArabic(val); }
-});
+};
+let fuse = new Fuse(deliveryData, fuseOptions);
+
+async function loadCustomAreas() {
+  try {
+    const snapshot = await db.collection('amasushi_areas').get();
+    customAreas = snapshot.docs.map((doc, i) => {
+      const data = doc.data() || {};
+      const ar = String(data.ar || '');
+      const en = String(data.en || '');
+      const price = data.price ?? '';
+      return {
+        rowNumber: String(data.rowNumber || 'C' + i),
+        ar, en, price,
+        searchKey: normalizeArabic(ar + en + price)
+      };
+    });
+    fuse = new Fuse(deliveryData.concat(customAreas), fuseOptions);
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput && searchInput.value.trim()) runSearch();
+  } catch (e) {
+    console.error('Failed to load custom delivery areas:', e);
+  }
+}
 
 // ──────────────────────────────────────────────────
 // Search — UNCHANGED
@@ -1186,6 +1217,7 @@ function runSearch() {
   const raw   = document.getElementById('searchInput').value.trim();
   const query = normalizeArabic(raw);
   const box   = document.getElementById('resultsBox');
+  const searchableData = deliveryData.concat(customAreas);
 
   // إظهار/إخفاء زر المسح
   document.getElementById('clearBtn').style.display = raw.length > 0 ? 'flex' : 'none';
@@ -1196,8 +1228,11 @@ function runSearch() {
   }
 
   let filtered = [];
-  if (/^\d+$/.test(raw.trim())) filtered = deliveryData.filter(i => i.rowNumber === raw.trim());
-  if (!filtered.length) filtered = deliveryData.filter(i => i.searchKey.includes(query));
+  if (/^(?:\d+|c\d+)$/i.test(raw.trim())) {
+    const rowQuery = raw.trim().toLowerCase();
+    filtered = searchableData.filter(i => String(i.rowNumber).toLowerCase() === rowQuery);
+  }
+  if (!filtered.length) filtered = searchableData.filter(i => i.searchKey.includes(query));
   if (!filtered.length) filtered = fuse.search(query).map(r => r.item);
 
   if (filtered.length > 0) {
@@ -1208,12 +1243,12 @@ function runSearch() {
       const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((item.ar||item.en)+' القاهرة الجديدة')}`;
       return `<div class="result-item">
         <div class="area-info">
-          <span class="area-name">${item.ar}</span>
-          <span class="area-en">${item.en}</span>
-          <span class="row-number">📋 شيت رقم: ${item.rowNumber}</span>
+          <span class="area-name">${escapeHtml(item.ar)}</span>
+          <span class="area-en">${escapeHtml(item.en)}</span>
+          <span class="row-number">📋 شيت رقم: ${escapeHtml(item.rowNumber)}</span>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-          <div class="${priceClass}"><span class="price-label">التوصيل</span>${item.price} ج</div>
+          <div class="${priceClass}"><span class="price-label">التوصيل</span>${escapeHtml(item.price)} ج</div>
           <a class="map-btn" href="${mapUrl}" target="_blank" rel="noopener">📍 خريطة</a>
         </div>
       </div>`;
@@ -1334,6 +1369,13 @@ function closeAdminDashboard() {
 async function loadDashboard() {
   const body = document.getElementById('aoDashBody');
   body.innerHTML = '<div class="ao-loading">جاري التحميل...</div>';
+  const isAdmin = !!localStorage.getItem('amasushi_admin_email');
+  const customAreasSection = isAdmin ? `
+      <div class="ao-sec">
+        <div class="ao-sec-title">📍 إدارة المناطق المخصصة</div>
+        <button class="a-login-btn" onclick="openAreaModal(null)" style="margin-bottom:12px">➕ إضافة منطقة جديدة</button>
+        <div id="customAreasList"></div>
+      </div>` : '';
 
   const todayStart = new Date();
   todayStart.setHours(0,0,0,0);
@@ -1440,11 +1482,163 @@ async function loadDashboard() {
         <div class="ao-sec-title">🕳️ مناطق يبحث عنها المندوبون ومش موجودة</div>
         ${missingHtml}
       </div>
+      ${customAreasSection}
     `;
+    if (isAdmin) await renderCustomAreasList();
 
   } catch(e) {
     body.innerHTML = `<div class="ao-loading">خطأ في تحميل البيانات 😥<br>
       <small style="color:#475569">${e.message}</small></div>`;
+  }
+}
+
+async function renderCustomAreasList() {
+  const container = document.getElementById('customAreasList');
+  if (!container) return;
+  if (!localStorage.getItem('amasushi_admin_email')) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = '<div class="ao-loading">جاري تحميل المناطق...</div>';
+  try {
+    const snapshot = await db.collection('amasushi_areas').orderBy('createdAt', 'desc').get();
+    if (snapshot.empty) {
+      container.innerHTML = '<div class="ao-loading">لا توجد مناطق مخصصة بعد</div>';
+      return;
+    }
+
+    container.innerHTML = snapshot.docs.map(doc => {
+      const area = doc.data() || {};
+      const label = [area.ar, area.en].filter(Boolean).map(escapeHtml).join(' · ');
+      return `<div class="log-item" style="align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="log-dev">${label || '—'}</span>
+        <span class="log-time" style="font-size:12px;color:var(--adm-text)">ج ${escapeHtml(area.price ?? '')}</span>
+        <span style="display:flex;gap:6px;flex-shrink:0">
+          <button type="button" data-area-action="edit" data-area-id="${escapeHtml(doc.id)}" aria-label="تعديل المنطقة" style="border:0;border-radius:7px;padding:5px 8px;background:var(--adm-surface-2);color:var(--adm-text);cursor:pointer">✏️</button>
+          <button type="button" data-area-action="delete" data-area-id="${escapeHtml(doc.id)}" aria-label="حذف المنطقة" style="border:0;border-radius:7px;padding:5px 8px;background:#7f1d1d;color:#fff;cursor:pointer">🗑️</button>
+        </span>
+      </div>`;
+    }).join('');
+
+    container.querySelectorAll('[data-area-action]').forEach(button => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.areaId;
+        if (button.dataset.areaAction === 'edit') editArea(id);
+        if (button.dataset.areaAction === 'delete') deleteArea(id);
+      });
+    });
+  } catch (e) {
+    console.error('Failed to render custom delivery areas:', e);
+    container.innerHTML = '<div class="ao-loading">تعذر تحميل المناطق المخصصة</div>';
+  }
+}
+
+async function openAreaModal(id, existingData) {
+  if (!localStorage.getItem('amasushi_admin_email')) return;
+  let area = existingData || {};
+  if (id && !existingData) {
+    try {
+      const doc = await db.collection('amasushi_areas').doc(id).get();
+      if (!doc.exists) { alert('المنطقة غير موجودة'); return; }
+      area = doc.data() || {};
+    } catch (e) {
+      console.error('Failed to load custom delivery area:', e);
+      alert('تعذر تحميل بيانات المنطقة');
+      return;
+    }
+  }
+
+  closeAreaModal();
+  const modal = document.createElement('div');
+  modal.id = 'areaModal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'إدارة منطقة مخصصة');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="width:100%;max-width:420px;background:var(--adm-surface);border:1px solid var(--adm-border);border-radius:16px;padding:18px;color:var(--adm-text);box-shadow:0 20px 60px rgba(0,0,0,.4)">
+      <div style="font-size:16px;font-weight:700;margin-bottom:16px">📍 ${id ? 'تعديل منطقة' : 'إضافة منطقة جديدة'}</div>
+      <label for="areaNameAr" style="display:block;font-size:12px;color:var(--adm-muted);margin-bottom:6px">الاسم العربي *</label>
+      <input id="areaNameAr" type="text" autocomplete="off" style="width:100%;padding:11px 12px;margin-bottom:12px;background:var(--adm-surface-2);border:1px solid var(--adm-border);border-radius:9px;color:var(--adm-text);font:inherit">
+      <label for="areaNameEn" style="display:block;font-size:12px;color:var(--adm-muted);margin-bottom:6px">الاسم الإنجليزي (اختياري)</label>
+      <input id="areaNameEn" type="text" autocomplete="off" style="width:100%;padding:11px 12px;margin-bottom:12px;background:var(--adm-surface-2);border:1px solid var(--adm-border);border-radius:9px;color:var(--adm-text);font:inherit">
+      <label for="areaPrice" style="display:block;font-size:12px;color:var(--adm-muted);margin-bottom:6px">سعر التوصيل *</label>
+      <input id="areaPrice" type="number" min="0" step="any" inputmode="decimal" style="width:100%;padding:11px 12px;margin-bottom:16px;background:var(--adm-surface-2);border:1px solid var(--adm-border);border-radius:9px;color:var(--adm-text);font:inherit">
+      <div style="display:flex;gap:8px">
+        <button type="button" id="areaSaveButton" class="a-login-btn" style="flex:1">حفظ</button>
+        <button type="button" id="areaCancelButton" class="a-logout-btn" style="flex:1">إلغاء</button>
+      </div>
+    </div>`;
+  modal.querySelector('#areaNameAr').value = area.ar || '';
+  modal.querySelector('#areaNameEn').value = area.en || '';
+  modal.querySelector('#areaPrice').value = area.price ?? '';
+  modal.querySelector('#areaSaveButton').onclick = () => saveArea(id || '');
+  modal.querySelector('#areaCancelButton').onclick = closeAreaModal;
+  modal.addEventListener('click', event => {
+    if (event.target === modal) closeAreaModal();
+  });
+  document.body.appendChild(modal);
+  modal.querySelector('#areaNameAr').focus();
+}
+
+function closeAreaModal() {
+  document.getElementById('areaModal')?.remove();
+}
+
+async function saveArea(existingId) {
+  if (!localStorage.getItem('amasushi_admin_email')) return;
+  const ar = document.getElementById('areaNameAr')?.value.trim() || '';
+  const en = document.getElementById('areaNameEn')?.value.trim() || '';
+  const priceText = document.getElementById('areaPrice')?.value.trim() || '';
+  const price = Number(priceText);
+  if (!ar || priceText === '' || !Number.isFinite(price) || price < 0) {
+    alert('أدخل الاسم العربي والسعر بشكل صحيح');
+    return;
+  }
+
+  try {
+    const area = { ar, en, price };
+    if (existingId) {
+      await db.collection('amasushi_areas').doc(existingId).update(area);
+    } else {
+      await db.collection('amasushi_areas').add({
+        ...area,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    closeAreaModal();
+    await loadCustomAreas();
+    await renderCustomAreasList();
+    alert('تم الحفظ');
+  } catch (e) {
+    console.error('Failed to save custom delivery area:', e);
+    alert('تعذر حفظ المنطقة');
+  }
+}
+
+async function editArea(id) {
+  if (!localStorage.getItem('amasushi_admin_email')) return;
+  try {
+    const doc = await db.collection('amasushi_areas').doc(id).get();
+    if (!doc.exists) { alert('المنطقة غير موجودة'); return; }
+    await openAreaModal(id, doc.data());
+  } catch (e) {
+    console.error('Failed to edit custom delivery area:', e);
+    alert('تعذر تحميل بيانات المنطقة');
+  }
+}
+
+async function deleteArea(id) {
+  if (!localStorage.getItem('amasushi_admin_email')) return;
+  if (!confirm('هل تريد حذف هذه المنطقة المخصصة؟')) return;
+  try {
+    await db.collection('amasushi_areas').doc(id).delete();
+    await loadCustomAreas();
+    await renderCustomAreasList();
+  } catch (e) {
+    console.error('Failed to delete custom delivery area:', e);
+    alert('تعذر حذف المنطقة');
   }
 }
 
@@ -1469,6 +1663,7 @@ async function enableAdminPush() {
 }
 
 // Init UI state on load
+loadCustomAreas();
 renderLoggedState();
 if (Notification.permission === 'default' && localStorage.getItem('amasushi_admin_email')) {
   Notification.requestPermission().then(enableAdminPush);
