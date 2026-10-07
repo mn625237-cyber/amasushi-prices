@@ -9,6 +9,7 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+const ADMIN_UID = 'jmarGOcrLfd0ryIk2fS3mgltqC73';
 
 module.exports = async (req, res) => {
 
@@ -48,7 +49,7 @@ module.exports = async (req, res) => {
   // ── 4. جيب FCM Token ──
   let token;
   try {
-    const doc = await db.collection('fcm_tokens').doc('admin').get();
+    const doc = await db.collection('fcm_tokens').doc(ADMIN_UID).get();
     if (!doc.exists) {
       return res.status(200).json({ success: false, note: 'No token yet' });
     }
@@ -99,7 +100,7 @@ module.exports = async (req, res) => {
   } catch (e) {
     // لو التوكن فاسد — امسحه تلقائياً
     if (e.code === 'messaging/registration-token-not-registered') {
-      await db.collection('fcm_tokens').doc('admin').delete();
+      await db.collection('fcm_tokens').doc(ADMIN_UID).delete();
       return res.status(200).json({ success: false, note: 'Token deleted — resubscribe needed' });
     }
     return res.status(500).json({ error: 'FCM error', detail: e.message });
