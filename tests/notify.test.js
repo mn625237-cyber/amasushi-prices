@@ -6,6 +6,7 @@ const state = {
   verifyCalls: [],
   sentMessages: [],
   shouldRejectToken: false,
+  verifiedAppId: '1:972743740267:web:24eb04cf828b545a41da2e',
   documentExists: true,
   fcmToken: 'test-fcm-token'
 };
@@ -39,7 +40,7 @@ const fakeAdmin = {
       async verifyToken(token) {
         state.verifyCalls.push(token);
         if (state.shouldRejectToken) throw new Error('invalid token');
-        return { app_id: '1:972743740267:web:24eb04cf828b545a41da2e' };
+        return { app_id: state.verifiedAppId };
       }
     };
   },
@@ -98,6 +99,7 @@ test.beforeEach(() => {
   state.verifyCalls.length = 0;
   state.sentMessages.length = 0;
   state.shouldRejectToken = false;
+  state.verifiedAppId = '1:972743740267:web:24eb04cf828b545a41da2e';
   state.documentExists = true;
   state.fcmToken = 'test-fcm-token';
 });
@@ -122,6 +124,7 @@ test('rejects a request without an App Check token', async () => {
   const response = await invoke(request);
 
   assert.equal(response.statusCode, 401);
+  assert.deepEqual(response.body, { error: 'verification_failed' });
   assert.equal(state.sentMessages.length, 0);
 });
 
@@ -130,6 +133,17 @@ test('rejects an invalid App Check token', async () => {
   const response = await invoke(makeRequest());
 
   assert.equal(response.statusCode, 401);
+  assert.deepEqual(response.body, { error: 'verification_failed' });
+  assert.doesNotMatch(JSON.stringify(response.body), /invalid token|verified-app-check-token/);
+  assert.equal(state.sentMessages.length, 0);
+});
+
+test('rejects an App Check token for a different App ID', async () => {
+  state.verifiedAppId = 'different-app-id';
+  const response = await invoke(makeRequest());
+
+  assert.equal(response.statusCode, 401);
+  assert.deepEqual(response.body, { error: 'app_id_mismatch' });
   assert.equal(state.sentMessages.length, 0);
 });
 

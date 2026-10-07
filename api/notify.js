@@ -67,16 +67,16 @@ module.exports = async (req, res) => {
   // ── Firebase App Check ──
   const appCheckToken = req.headers['x-firebase-appcheck'];
   if (typeof appCheckToken !== 'string' || !appCheckToken) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'verification_failed' });
   }
 
   try {
     const decodedToken = await admin.appCheck().verifyToken(appCheckToken);
     if (decodedToken.app_id !== APP_ID) {
-      return res.status(401).json({ error: 'Unauthorized' });
+      return res.status(401).json({ error: 'app_id_mismatch' });
     }
   } catch (_) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'verification_failed' });
   }
 
   // ── Request Content-Type and payload validation ──
