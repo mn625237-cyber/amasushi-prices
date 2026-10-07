@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == 'jmarGOcrLfd0ryIk2fS3mgltqC73';
+    }
+
+    function validVisit(data) {
+      return data.keys().hasAll(['timestamp', 'device', 'browser', 'os'])
+        && data.keys().hasOnly(['timestamp', 'device', 'browser', 'os'])
+        && data.timestamp == request.time
+        && data.device in ['mobile', 'desktop']
+        && data.browser is string
+        && data.browser.size() <= 40
+        && data.os is string
+        && data.os.size() <= 160;
+    }
+
+    function validSearch(data) {
+      return data.keys().hasAll(['timestamp', 'query'])
+        && data.keys().hasOnly(['timestamp', 'query'])
+        && data.timestamp == request.time
+        && data.query is string
+        && data.query.size() > 2
+        && data.query.size() <= 256;
+    }
+
+    function validArea(data) {
+      return data.keys().hasAll(['ar', 'price'])
+        && data.keys().hasOnly(['ar', 'en', 'price', 'createdAt'])
+        && data.ar is string
+        && data.ar.size() > 0
+        && data.ar.size() <= 160
+        && (!('en' in data) || (data.en is string && data.en.size() <= 160))
+        && data.price is number
+        && data.price >= 0
+        && (!('createdAt' in data) || data.createdAt is timestamp);
+    }
+
+    match /amasushi_areas/{areaId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validArea(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /amasushi_visits/{visitId} {
+      allow read: if isAdmin();
+      allow create: if validVisit(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /amasushi_searches/{searchId} {
+      allow read: if isAdmin();
+      allow create: if validSearch(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /amasushi_missing_searches/{searchId} {
+      allow read: if isAdmin();
+      allow create: if validSearch(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /fcm_tokens/{tokenId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

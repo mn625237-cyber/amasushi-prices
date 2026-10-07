@@ -30,7 +30,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
-<!-- firebase-auth-compat.js: Lazy — يُحمَّل فقط عند ضغط "دخول المدير" -->
+<!-- firebase-auth-compat.js: lazy — يُحمَّل عند أول استخدام للمصادقة -->
 <!-- firebase-messaging-compat.js: Lazy — يُحمَّل فقط عند تسجيل دخول الأدمن -->
 
 <style>
@@ -865,8 +865,133 @@ const firebaseConfig = {
   appId:             "1:972743740267:web:24eb04cf828b545a41da2e"
 };
 firebase.initializeApp(firebaseConfig);
-let auth = null; // Lazy — يُهيَّأ فقط عند تحميل Auth SDK
-const db   = firebase.firestore();
+const ADMIN_UID = 'jmarGOcrLfd0ryIk2fS3mgltqC73';
+let auth = null;
+let authLoadPromise = null;
+let authStateReady = null;
+let authStateUser = null;
+let messagingLoadPromise = null;
+const db = firebase.firestore();
+
+function loadFirebaseAuth() {
+  if (auth) return Promise.resolve(auth);
+  if (!authLoadPromise) {
+    authLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js';
+      script.async = true;
+      script.onload = () => {
+        try {
+          auth = firebase.auth();
+          resolve(auth);
+        } catch (error) {
+          authLoadPromise = null;
+          reject(error);
+        }
+      };
+      script.onerror = () => {
+        authLoadPromise = null;
+        reject(new Error('تعذّر تحميل Firebase Authentication'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return authLoadPromise;
+}
+
+function loadFirebaseMessaging() {
+  if (typeof firebase.messaging === 'function') {
+    return Promise.resolve(firebase.messaging());
+  }
+  if (!messagingLoadPromise) {
+    messagingLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js';
+      script.async = true;
+      script.onload = () => {
+        try {
+          resolve(firebase.messaging());
+        } catch (error) {
+          messagingLoadPromise = null;
+          reject(error);
+        }
+      };
+      script.onerror = () => {
+        messagingLoadPromise = null;
+        reject(new Error('تعذّر تحميل Firebase Messaging'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return messagingLoadPromise;
+}
+
+function isAdminSession() {
+  return !!authStateUser && authStateUser.uid === ADMIN_UID;
+}
+
+function applyAuthState(user) {
+  const adminUser = user && user.uid === ADMIN_UID ? user : null;
+  authStateUser = adminUser;
+  const form = document.getElementById('sbLoginForm');
+  const logged = document.getElementById('sbLoggedState');
+  if (form && logged) {
+    form.style.display = adminUser ? 'none' : 'block';
+    logged.classList.toggle('show', !!adminUser);
+    document.getElementById('loggedEmail').textContent = adminUser?.email || '—';
+  }
+
+  if (!adminUser) {
+    closeAdminDashboard();
+    closeAreaModal();
+    return;
+  }
+
+  if ('Notification' in window) {
+    if (Notification.permission === 'default') {
+      Promise.resolve(Notification.requestPermission())
+        .then(permission => permission === 'granted' && enableAdminPush())
+        .catch(error => console.warn('Notification permission request failed', error));
+    } else if (Notification.permission === 'granted') {
+      enableAdminPush();
+    }
+  }
+}
+
+function renderLoggedState() {
+  if (authStateReady) return authStateReady;
+  authStateReady = loadFirebaseAuth().then(authInstance => new Promise(resolve => {
+    let firstState = true;
+    authInstance.onAuthStateChanged(user => {
+      const authorized = !!user && user.uid === ADMIN_UID;
+      applyAuthState(authorized ? user : null);
+      if (user && !authorized) {
+        authInstance.signOut().catch(error => console.warn('Unauthorized sign-out failed', error));
+      }
+      if (firstState) {
+        firstState = false;
+        resolve(authStateUser);
+      }
+    }, error => {
+      console.error('Firebase Auth state listener failed:', error);
+      applyAuthState(null);
+      if (firstState) {
+        firstState = false;
+        resolve(null);
+      }
+    });
+  })).catch(error => {
+    authStateReady = null;
+    console.error('Firebase Auth initialization failed:', error);
+    const err = document.getElementById('aErr');
+    if (err) {
+      err.textContent = 'تعذّر تحميل تسجيل الدخول. تحقق من الاتصال ثم أعد المحاولة.';
+      err.style.display = 'block';
+    }
+    return null;
+  });
+  return authStateReady;
+}
 
 // ──────────────────────────────────────────────────
 // Visit Logging — UNCHANGED
@@ -1317,45 +1442,61 @@ function closeSidebar() {
   menuBtn.classList.remove('is-open');
 }
 
-function doLogin() {
+async function doLogin() {
   const email = document.getElementById('aEmail').value.trim();
-  const pass = document.getElementById('aPass').value.trim();
+  const pass = document.getElementById('aPass').value;
   const err = document.getElementById('aErr');
-  const allowed = {
-    'admin@amasushi.com': 'amasushi2026',
-    'nabil@amasushi.com': 'nabil2026'
-  };
-  if (allowed[email] && allowed[email] === pass) {
-    err.style.display = 'none';
-    localStorage.setItem('amasushi_admin_email', email);
-    renderLoggedState();
-  } else {
+  err.style.display = 'none';
+  if (!email || !pass) {
+    err.textContent = 'أدخل البريد الإلكتروني وكلمة المرور.';
+    err.style.display = 'block';
+    return;
+  }
+
+  try {
+    const authInstance = await loadFirebaseAuth();
+    await renderLoggedState();
+    const credential = await authInstance.signInWithEmailAndPassword(email, pass);
+    if (credential.user.uid !== ADMIN_UID) {
+      await authInstance.signOut();
+      throw new Error('not-authorized');
+    }
+    document.getElementById('aPass').value = '';
+    applyAuthState(credential.user);
+  } catch (error) {
+    console.warn('Firebase sign-in failed:', error);
+    err.textContent = error.message === 'not-authorized'
+      ? 'هذا الحساب غير مخوّل لإدارة الموقع.'
+      : error.code === 'auth/network-request-failed'
+        ? 'تعذّر الاتصال بخدمة تسجيل الدخول. حاول مجدداً.'
+        : 'بيانات الدخول غير صحيحة أو تعذّر تسجيل الدخول.';
     err.style.display = 'block';
   }
 }
 
-function doLogout() {
-  localStorage.removeItem('amasushi_admin_email');
-  renderLoggedState();
-  closeAdminDashboard();
-}
-
-function renderLoggedState() {
-  const email = localStorage.getItem('amasushi_admin_email');
-  const form = document.getElementById('sbLoginForm');
-  const logged = document.getElementById('sbLoggedState');
-  if (email) {
-    form.style.display = 'none';
-    logged.classList.add('show');
-    document.getElementById('loggedEmail').textContent = email;
-  } else {
-    form.style.display = 'block';
-    logged.classList.remove('show');
-    document.getElementById('loggedEmail').textContent = '—';
+async function doLogout() {
+  try {
+    const authInstance = auth || await loadFirebaseAuth();
+    await authInstance.signOut();
+    document.getElementById('aPass').value = '';
+    closeAdminDashboard();
+  } catch (error) {
+    console.error('Firebase sign-out failed:', error);
+    const err = document.getElementById('aErr');
+    err.textContent = 'تعذّر تسجيل الخروج. حاول مجدداً.';
+    err.style.display = 'block';
   }
 }
 
-function openAdminDashboard() {
+async function openAdminDashboard() {
+  await renderLoggedState();
+  if (!isAdminSession()) {
+    const err = document.getElementById('aErr');
+    err.textContent = 'يجب تسجيل الدخول بحساب المدير المعتمد أولاً.';
+    err.style.display = 'block';
+    closeAdminDashboard();
+    return;
+  }
   const overlay = document.getElementById('adminOverlay');
   overlay.classList.add('open');
   closeSidebar();
@@ -1368,8 +1509,13 @@ function closeAdminDashboard() {
 
 async function loadDashboard() {
   const body = document.getElementById('aoDashBody');
+  if (!isAdminSession()) {
+    body.innerHTML = '<div class="ao-loading">غير مصرح بفتح لوحة التحكم.</div>';
+    closeAdminDashboard();
+    return;
+  }
   body.innerHTML = '<div class="ao-loading">جاري التحميل...</div>';
-  const isAdmin = !!localStorage.getItem('amasushi_admin_email');
+  const isAdmin = isAdminSession();
   const customAreasSection = isAdmin ? `
       <div class="ao-sec">
         <div class="ao-sec-title">📍 إدارة المناطق المخصصة</div>
@@ -1495,7 +1641,7 @@ async function loadDashboard() {
 async function renderCustomAreasList() {
   const container = document.getElementById('customAreasList');
   if (!container) return;
-  if (!localStorage.getItem('amasushi_admin_email')) {
+  if (!isAdminSession()) {
     container.innerHTML = '';
     return;
   }
@@ -1535,7 +1681,7 @@ async function renderCustomAreasList() {
 }
 
 async function openAreaModal(id, existingData) {
-  if (!localStorage.getItem('amasushi_admin_email')) return;
+  if (!isAdminSession()) return;
   let area = existingData || {};
   if (id && !existingData) {
     try {
@@ -1587,7 +1733,7 @@ function closeAreaModal() {
 }
 
 async function saveArea(existingId) {
-  if (!localStorage.getItem('amasushi_admin_email')) return;
+  if (!isAdminSession()) return;
   const ar = document.getElementById('areaNameAr')?.value.trim() || '';
   const en = document.getElementById('areaNameEn')?.value.trim() || '';
   const priceText = document.getElementById('areaPrice')?.value.trim() || '';
@@ -1618,7 +1764,7 @@ async function saveArea(existingId) {
 }
 
 async function editArea(id) {
-  if (!localStorage.getItem('amasushi_admin_email')) return;
+  if (!isAdminSession()) return;
   try {
     const doc = await db.collection('amasushi_areas').doc(id).get();
     if (!doc.exists) { alert('المنطقة غير موجودة'); return; }
@@ -1630,7 +1776,7 @@ async function editArea(id) {
 }
 
 async function deleteArea(id) {
-  if (!localStorage.getItem('amasushi_admin_email')) return;
+  if (!isAdminSession()) return;
   if (!confirm('هل تريد حذف هذه المنطقة المخصصة؟')) return;
   try {
     await db.collection('amasushi_areas').doc(id).delete();
@@ -1646,28 +1792,29 @@ async function deleteArea(id) {
 // NEW: FCM Subscribe — للأدمن فقط
 // ──────────────────────────────────────────────────
 async function enableAdminPush() {
-  const email = localStorage.getItem('amasushi_admin_email');
-  if (!email) return;
-  if (!('Notification' in window)) return;
-  if (Notification.permission === 'granted') {
-    try {
-      const token = await firebase.messaging().getToken();
-      const doc = await db.collection('admin_tokens').doc(email).get();
-      if (!doc.exists || doc.data().token !== token) {
-        await db.collection('admin_tokens').doc(email).set({ token, email, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-      }
-    } catch (e) {
-      console.warn('FCM setup failed', e);
+  const user = authStateUser;
+  if (!isAdminSession() || !user || !('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const messaging = await loadFirebaseMessaging();
+    const token = await messaging.getToken();
+    const tokenRef = db.collection('fcm_tokens').doc(user.uid);
+    const doc = await tokenRef.get();
+    if (!doc.exists || doc.data().token !== token) {
+      await tokenRef.set({
+        token,
+        uid: user.uid,
+        email: user.email || '',
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
     }
+  } catch (e) {
+    console.warn('FCM setup failed', e);
   }
 }
 
 // Init UI state on load
 loadCustomAreas();
 renderLoggedState();
-if (Notification.permission === 'default' && localStorage.getItem('amasushi_admin_email')) {
-  Notification.requestPermission().then(enableAdminPush);
-}
 
 // Auto-hide intro overlay
 window.addEventListener('load', () => {
