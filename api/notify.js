@@ -10,13 +10,36 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const ADMIN_UID = 'jmarGOcrLfd0ryIk2fS3mgltqC73';
+const APP_ID = '1:972743740267:web:24eb04cf828b545a41da2e';
+const ALLOWED_ORIGIN = 'https://amasushi-prices.vercel.app';
+const PAYLOAD_LIMITS = { os: 80, browser: 40, device: 80 };
+
+function validatePayload(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+
+  const fields = Object.keys(PAYLOAD_LIMITS);
+  if (Object.keys(body).some(key => !fields.includes(key))) return null;
+
+  const result = {};
+  for (const field of fields) {
+    const value = body[field];
+    if (typeof value !== 'string') return null;
+
+    const normalized = value.trim();
+    if (!normalized || normalized.length > PAYLOAD_LIMITS[field] || /[\u0000-\u001f\u007f]/.test(normalized)) {
+      return null;
+    }
+    result[field] = normalized;
+  }
+
+  return result;
+}
 
 module.exports = async (req, res) => {
-
   // ── CORS ──
-  res.setHeader('Access-Control-Allow-Origin',  'https://amasushi-prices.vercel.app');
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Notify-Secret, X-Timestamp');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Firebase-AppCheck, X-Timestamp');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -26,27 +49,48 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // ── 1. Secret Check ──
-  const secret = req.headers['x-notify-secret'];
-  if (!secret || secret !== process.env.NOTIFY_SECRET) {
-    return res.status(403).json({ error: 'Unauthorized' });
-  }
-
-  // ── 2. Origin Check ──
-  const origin = req.headers['origin'] || '';
-  const allowedOrigins = ['https://amasushi-prices.vercel.app'];
-  if (!allowedOrigins.includes(origin)) {
+  // ── Origin Check ──
+  const origin = req.headers.origin || '';
+  if (origin !== ALLOWED_ORIGIN) {
     return res.status(403).json({ error: 'Forbidden origin' });
   }
 
-  // ── 3. Timestamp Check (أحدث من 30 ثانية) ──
-  const ts  = parseInt(req.headers['x-timestamp'] || '0');
-  const now = Date.now();
-  if (!ts || Math.abs(now - ts) > 30000) {
+  // ── Timestamp Check (أحدث من 30 ثانية) ──
+  const timestamp = req.headers['x-timestamp'];
+  const ts = typeof timestamp === 'string' && /^\d{13}$/.test(timestamp)
+    ? Number(timestamp)
+    : 0;
+  if (!ts || !Number.isSafeInteger(ts) || Math.abs(Date.now() - ts) > 30000) {
     return res.status(403).json({ error: 'Expired request' });
   }
 
-  // ── 4. جيب FCM Token ──
+  // ── Firebase App Check ──
+  const appCheckToken = req.headers['x-firebase-appcheck'];
+  if (typeof appCheckToken !== 'string' || !appCheckToken) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const decodedToken = await admin.appCheck().verifyToken(appCheckToken);
+    if (decodedToken.app_id !== APP_ID) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  } catch (_) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // ── Request Content-Type and payload validation ──
+  const contentType = req.headers['content-type'] || '';
+  if (typeof contentType !== 'string' || !/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    return res.status(415).json({ error: 'Content-Type must be application/json' });
+  }
+
+  const payload = validatePayload(req.body);
+  if (!payload) {
+    return res.status(400).json({ error: 'Invalid notification payload' });
+  }
+
+  // ── جيب FCM Token ──
   let token;
   try {
     const doc = await db.collection('fcm_tokens').doc(ADMIN_UID).get();
@@ -54,55 +98,46 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: false, note: 'No token yet' });
     }
     token = doc.data().token;
-    if (!token) {
+    if (typeof token !== 'string' || !token.trim()) {
       return res.status(200).json({ success: false, note: 'Empty token' });
     }
-  } catch (e) {
-    return res.status(500).json({ error: 'Firestore error', detail: e.message });
+  } catch (_) {
+    return res.status(500).json({ error: 'Firestore error' });
   }
-
-  // ── 5. بيانات الإشعار ──
-  const body    = req.body || {};
-  const os      = body.os      || '—';
-  const browser = body.browser || '—';
-  const device  = body.device  || '—';
 
   // الوقت بتوقيت القاهرة
   const time = new Date().toLocaleTimeString('ar-EG', {
-    hour:     '2-digit',
-    minute:   '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
     timeZone: 'Africa/Cairo'
   });
 
   const notifTitle = '🛵 زيارة جديدة — اما سوشي';
-  const notifBody  = `${os} · ${browser} · ${device} · ${time}`;
+  const notifBody = `${payload.os} · ${payload.browser} · ${payload.device} · ${time}`;
 
-  // ── 6. إرسال FCM — data-only payload ──
-  // data-only: يمنع FCM من عرض إشعار تلقائي
-  // SW هو الوحيد المسؤول عن العرض عبر onBackgroundMessage
+  // ── إرسال FCM — data-only payload ──
   try {
     await admin.messaging().send({
       token,
       data: {
         title: notifTitle,
-        body:  notifBody
+        body: notifBody
       },
       webpush: {
         headers: { Urgency: 'high' },
         fcmOptions: {
-          link: 'https://amasushi-prices.vercel.app'
+          link: ALLOWED_ORIGIN
         }
       }
     });
 
     return res.status(200).json({ success: true });
-
   } catch (e) {
     // لو التوكن فاسد — امسحه تلقائياً
     if (e.code === 'messaging/registration-token-not-registered') {
       await db.collection('fcm_tokens').doc(ADMIN_UID).delete();
       return res.status(200).json({ success: false, note: 'Token deleted — resubscribe needed' });
     }
-    return res.status(500).json({ error: 'FCM error', detail: e.message });
+    return res.status(500).json({ error: 'FCM error' });
   }
 };
