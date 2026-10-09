@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>اختبار Firebase App Check</title>
+  <style>
+    body { margin: 0; padding: 24px; background: #111827; color: #f9fafb; font-family: system-ui, sans-serif; line-height: 1.7; }
+    main { max-width: 680px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; }
+    #status { white-space: pre-wrap; background: #1f2937; border-radius: 10px; padding: 16px; min-height: 5em; }
+    .ok { color: #86efac; }
+    .error { color: #fca5a5; }
+    .muted { color: #d1d5db; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>اختبار Firebase App Check</h1>
+    <p class="muted">هذه صفحة تشخيص مؤقتة. تعرض حالة كل مرحلة ولا تعرض رمز App Check.</p>
+    <div id="status" aria-live="polite">جاري بدء الاختبار...</div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const status = document.getElementById('status');
+      const firebaseConfig = {
+        apiKey: 'AIzaSyBRSTsBy_2rgfqWASSFAF3jNXe2fgvnWw8',
+        authDomain: 'amasushi-prices.firebaseapp.com',
+        projectId: 'amasushi-prices',
+        storageBucket: 'amasushi-prices.firebasestorage.app',
+        messagingSenderId: '972743740267',
+        appId: '1:972743740267:web:24eb04cf828b545a41da2e'
+      };
+      const APP_CHECK_SITE_KEY = '6Lf0peMtAAAAAG8SRZC4-3Yve2gnRyjAPdmQeryg';
+
+      function show(stage, message, className) {
+        status.className = className || '';
+        status.textContent = stage + '\n' + message;
+      }
+
+      function loadScript(src, label) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.async = true;
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('تعذر تحميل ' + label));
+          document.head.appendChild(script);
+        });
+      }
+
+      async function run() {
+        try {
+          show('المرحلة 1: تحميل Firebase SDK', 'جاري التحميل...', '');
+          await loadScript('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js', 'Firebase App SDK');
+          await loadScript('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-check-compat.js', 'Firebase App Check SDK');
+        } catch (error) {
+          show('فشل تحميل Firebase SDK', error.message || 'خطأ غير معروف', 'error');
+          return;
+        }
+
+        let appCheck;
+        try {
+          show('المرحلة 2: تهيئة Firebase App Check', 'جاري التهيئة...', '');
+          firebase.initializeApp(firebaseConfig);
+          appCheck = firebase.appCheck();
+          const activation = appCheck.activate(
+            new firebase.appCheck.ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),
+            true
+          );
+          if (activation && typeof activation.then === 'function') await activation;
+        } catch (error) {
+          show('فشل تهيئة Firebase App Check', error.message || 'خطأ غير معروف', 'error');
+          return;
+        }
+
+        let tokenResponse;
+        try {
+          show('المرحلة 3: الحصول على App Check token', 'جاري الطلب (لن يتم عرض الرمز)...', '');
+          tokenResponse = await appCheck.getToken(false);
+          if (!tokenResponse || typeof tokenResponse.token !== 'string' || !tokenResponse.token) {
+            throw new Error('لم يُرجع Firebase رمزًا صالحًا');
+          }
+        } catch (error) {
+          show('فشل الحصول على App Check token', error.message || 'خطأ غير معروف', 'error');
+          return;
+        }
+
+        try {
+          show('المرحلة 4: استجابة الخادم', 'جاري إرسال طلب تشخيصي بجسم فارغ...', '');
+          const response = await fetch('/api/notify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Firebase-AppCheck': tokenResponse.token,
+              'X-Timestamp': String(Date.now())
+            },
+            body: '{}'
+          });
+          const text = await response.text();
+          let message = text;
+          try {
+            const data = JSON.parse(text);
+            message = data && typeof data.error === 'string'
+              ? data.error
+              : JSON.stringify(data);
+          } catch (_) {
+            // اعرض النص الخام إذا لم تكن الاستجابة JSON.
+          }
+          show('استجابة الخادم', 'HTTP ' + response.status + '\nالرسالة: ' + message, response.ok ? 'ok' : 'error');
+        } catch (error) {
+          show('تعذر الاتصال بـ /api/notify', error.message || 'خطأ شبكة غير معروف', 'error');
+        }
+      }
+
+      run();
+    })();
+  </script>
+</body>
+</html>
