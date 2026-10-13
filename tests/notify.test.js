@@ -40,7 +40,7 @@ const fakeAdmin = {
       async verifyToken(token) {
         state.verifyCalls.push(token);
         if (state.shouldRejectToken) throw new Error('invalid token');
-        return { app_id: state.verifiedAppId };
+        return { appId: state.verifiedAppId };
       }
     };
   },
