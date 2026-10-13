@@ -72,7 +72,7 @@ module.exports = async (req, res) => {
 
   try {
     const decodedToken = await admin.appCheck().verifyToken(appCheckToken);
-    if (decodedToken.app_id !== APP_ID) {
+    if (decodedToken.appId !== APP_ID) {
       return res.status(401).json({ error: 'app_id_mismatch' });
     }
   } catch (_) {
