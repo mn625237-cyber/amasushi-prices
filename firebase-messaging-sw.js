@@ -45,7 +45,10 @@ self.addEventListener('notificationclick', e => {
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       for (const c of list) {
-        if (c.url.includes('amasushi-prices') && 'focus' in c) return c.focus();
+        const u = new URL(c.url);
+        if (u.origin === 'https://amasushi-prices.vercel.app'
+            && (u.pathname === '/' || u.pathname === '/index.html')
+            && 'focus' in c) return c.focus();
       }
       if (clients.openWindow) {
         return clients.openWindow('https://amasushi-prices.vercel.app');
