@@ -23,9 +23,13 @@ const messaging = firebase.messaging();
 // data-only payload: FCM لا يعرض إشعاراً تلقائياً — نحن المسؤولون عن العرض هنا
 // tag: 'visit-notif' → يمنع stacking — الإشعار الجديد يستبدل القديم
 // renotify: false → لا صوت/اهتزاز إضافي لو الإشعار لم يُغلق بعد
-messaging.onBackgroundMessage(payload => {
-  const title = payload.data?.title || '🛵 زيارة جديدة';
+messaging.onBackgroundMessage(async payload => {
+  const baseTitle = payload.data?.title || '🛵 زيارة جديدة';
   const body  = payload.data?.body  || '';
+  const existing = await self.registration.getNotifications({ tag: 'visit-notif' });
+  const previousCount = Number(existing[0]?.data?.count);
+  const count = Number.isFinite(previousCount) && previousCount > 0 ? previousCount + 1 : 1;
+  const title = count === 1 ? baseTitle : `🛵 ${count} زيارات جديدة — اما سوشي`;
 
   return self.registration.showNotification(title, {
     body,
@@ -35,7 +39,7 @@ messaging.onBackgroundMessage(payload => {
     badge:            '/logo.jpg',
     requireInteraction: false,
     vibrate:          [200, 100, 200],
-    data: { url: 'https://amasushi-prices.vercel.app' }
+    data: { url: 'https://amasushi-prices.vercel.app', count }
   });
 });
 
