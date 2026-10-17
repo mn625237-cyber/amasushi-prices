@@ -1448,6 +1448,7 @@ function startVoiceSearch() {
 function toggleAcc(name) {
   const acc = document.getElementById('acc-' + name);
   acc.classList.toggle('open');
+  if (name === 'admin') renderLoggedState();
 }
 
 function openSidebar() {
@@ -1840,6 +1841,7 @@ async function enableAdminPush() {
 
 // Init UI state on load
 loadCustomAreas();
+if (localStorage.getItem('isAdmin') === 'true') renderLoggedState();
 
 // Auto-hide intro overlay
 window.addEventListener('load', () => {
