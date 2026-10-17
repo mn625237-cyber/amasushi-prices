@@ -978,6 +978,11 @@ function renderLoggedState() {
   authStateReady = loadFirebaseAuth().then(authInstance => new Promise(resolve => {
     let firstState = true;
     authInstance.onAuthStateChanged(user => {
+      if (user && user.uid === ADMIN_UID) {
+        localStorage.setItem('isAdmin', 'true');
+      } else {
+        localStorage.removeItem('isAdmin');
+      }
       const authorized = !!user && user.uid === ADMIN_UID;
       applyAuthState(authorized ? user : null);
       if (user && !authorized) {
@@ -1009,9 +1014,10 @@ function renderLoggedState() {
 }
 
 // ──────────────────────────────────────────────────
-// Visit Logging — UNCHANGED
+// Visit Logging
 // ──────────────────────────────────────────────────
 function logVisit() {
+  if (localStorage.getItem('isAdmin') === 'true') return;
   const ua = navigator.userAgent;
   let device  = /Android|iPhone|iPad|iPod/i.test(ua) ? 'mobile' : 'desktop';
   let browser = 'other';
@@ -1427,6 +1433,7 @@ function startVoiceSearch() {
 function toggleAcc(name) {
   const acc = document.getElementById('acc-' + name);
   acc.classList.toggle('open');
+  if (name === 'admin') renderLoggedState();
 }
 
 function openSidebar() {
@@ -1797,7 +1804,7 @@ async function enableAdminPush() {
 
 // Init UI state on load
 loadCustomAreas();
-renderLoggedState();
+if (localStorage.getItem('isAdmin') === 'true') renderLoggedState();
 
 // Auto-hide intro overlay
 window.addEventListener('load', () => {
