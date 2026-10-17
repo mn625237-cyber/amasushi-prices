@@ -1087,20 +1087,6 @@ function logSearch(query) {
   }, 2000);
 }
 
-let missingLogTimer, lastMissingQuery = '';
-function logMissingSearch(query) {
-  clearTimeout(missingLogTimer);
-  missingLogTimer = setTimeout(() => {
-    const q = query.trim();
-    if (q.length > 2 && q !== lastMissingQuery) {
-      lastMissingQuery = q;
-      db.collection('amasushi_missing_searches').add({
-        timestamp: firebase.firestore.FieldValue.serverTimestamp(), query: q
-      }).catch(() => {});
-    }
-  }, 2000);
-}
-
 // ──────────────────────────────────────────────────
 // Arabic Normalization — UNCHANGED
 // ──────────────────────────────────────────────────
@@ -1399,7 +1385,6 @@ function runSearch() {
       </div>`;
     }).join('');
   } else {
-    logMissingSearch(raw);
     box.innerHTML = '<div class="no-data">لا توجد منطقة مطابقة، جرب كلمة مختلفة 🔎</div>';
   }
 }
@@ -1570,7 +1555,7 @@ async function loadDashboard() {
         const pct = total > 0 ? Math.round(cnt/total*100) : 0;
         const clr = osColors[i % osColors.length];
         return `<div class="d-row">
-          <div class="d-lbl">${lbl||'—'}</div>
+          <div class="d-lbl">${escapeHtml(lbl || '—')}</div>
           <div class="d-bar-wrap">
             <div class="d-bar-fill" style="width:${pct}%;background:${clr}"></div>
           </div>
@@ -1585,28 +1570,10 @@ async function loadDashboard() {
           t.toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'})
         : '—';
       return `<div class="log-item">
-        <span class="log-dev">📱 ${v.os||'—'} · ${v.browser||'—'} · ${v.device||'—'}</span>
+        <span class="log-dev">📱 ${escapeHtml(v.os || '—')} · ${escapeHtml(v.browser || '—')} · ${escapeHtml(v.device || '—')}</span>
         <span class="log-time">${ts}</span>
       </div>`;
     }).join('') || '<div class="ao-loading">لا زيارات بعد</div>';
-
-    let missingHtml = '<div class="ao-loading">لا توجد بيانات</div>';
-    try {
-      const mSnap = await db.collection('amasushi_missing_searches').get();
-      const freq  = {};
-      mSnap.docs.map(d => d.data().query || '').forEach(q => {
-        if (!q) return;
-        freq[q] = (freq[q] || 0) + 1;
-      });
-      const top = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0, 10);
-      missingHtml = top.length > 0
-        ? top.map(([q,c]) =>
-            `<div class="miss-row">
-               <span class="miss-q">${q}</span>
-               <span class="miss-cnt">${c}</span>
-             </div>`).join('')
-        : '<div class="ao-loading">لا مناطق مفقودة 🎉</div>';
-    } catch(e) {}
 
     body.innerHTML = `
       <div class="ao-cards">
@@ -1644,17 +1611,13 @@ async function loadDashboard() {
         </div>
       </div>
 
-      <div class="ao-sec">
-        <div class="ao-sec-title">🕳️ مناطق يبحث عنها المندوبون ومش موجودة</div>
-        ${missingHtml}
-      </div>
       ${customAreasSection}
     `;
     if (isAdmin) await renderCustomAreasList();
 
   } catch(e) {
     body.innerHTML = `<div class="ao-loading">خطأ في تحميل البيانات 😥<br>
-      <small style="color:#475569">${e.message}</small></div>`;
+      <small style="color:#475569">${escapeHtml(e.message)}</small></div>`;
   }
 }
 
