@@ -59,7 +59,7 @@ service cloud.firestore {
 
     match /amasushi_missing_searches/{searchId} {
       allow read: if isAdmin();
-      allow create: if validSearch(request.resource.data);
+      allow create: if false;
       allow update, delete: if false;
     }
 
