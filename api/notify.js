@@ -42,16 +42,19 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Firebase-AppCheck, X-Timestamp');
 
   if (req.method === 'OPTIONS') {
+    console.info('[notify]', 'method_not_allowed');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
+    console.info('[notify]', 'method_not_allowed');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   // ── Origin Check ──
   const origin = req.headers.origin || '';
   if (origin !== ALLOWED_ORIGIN) {
+    console.info('[notify]', 'origin_rejected');
     return res.status(403).json({ error: 'Forbidden origin' });
   }
 
@@ -61,32 +64,38 @@ module.exports = async (req, res) => {
     ? Number(timestamp)
     : 0;
   if (!ts || !Number.isSafeInteger(ts) || Math.abs(Date.now() - ts) > 30000) {
+    console.info('[notify]', 'expired_timestamp');
     return res.status(403).json({ error: 'Expired request' });
   }
 
   // ── Firebase App Check ──
   const appCheckToken = req.headers['x-firebase-appcheck'];
   if (typeof appCheckToken !== 'string' || !appCheckToken) {
+    console.info('[notify]', 'missing_app_check');
     return res.status(401).json({ error: 'verification_failed' });
   }
 
   try {
     const decodedToken = await admin.appCheck().verifyToken(appCheckToken);
     if (decodedToken.appId !== APP_ID) {
+      console.info('[notify]', 'app_id_mismatch');
       return res.status(401).json({ error: 'app_id_mismatch' });
     }
-  } catch (_) {
+  } catch (e) {
+    console.info('[notify]', 'app_check_invalid', e.code);
     return res.status(401).json({ error: 'verification_failed' });
   }
 
   // ── Request Content-Type and payload validation ──
   const contentType = req.headers['content-type'] || '';
   if (typeof contentType !== 'string' || !/^application\/json(?:\s*;|$)/i.test(contentType)) {
+    console.info('[notify]', 'bad_content_type');
     return res.status(415).json({ error: 'Content-Type must be application/json' });
   }
 
   const payload = validatePayload(req.body);
   if (!payload) {
+    console.info('[notify]', 'invalid_payload');
     return res.status(400).json({ error: 'Invalid notification payload' });
   }
 
@@ -95,13 +104,16 @@ module.exports = async (req, res) => {
   try {
     const doc = await db.collection('fcm_tokens').doc(ADMIN_UID).get();
     if (!doc.exists) {
+      console.info('[notify]', 'no_token_doc');
       return res.status(200).json({ success: false, note: 'No token yet' });
     }
     token = doc.data().token;
     if (typeof token !== 'string' || !token.trim()) {
+      console.info('[notify]', 'no_token_doc');
       return res.status(200).json({ success: false, note: 'Empty token' });
     }
-  } catch (_) {
+  } catch (e) {
+    console.info('[notify]', 'firestore_error', e.code);
     return res.status(500).json({ error: 'Firestore error' });
   }
 
@@ -131,13 +143,16 @@ module.exports = async (req, res) => {
       }
     });
 
+    console.info('[notify]', 'fcm_sent');
     return res.status(200).json({ success: true });
   } catch (e) {
     // لو التوكن فاسد — امسحه تلقائياً
     if (e.code === 'messaging/registration-token-not-registered') {
       await db.collection('fcm_tokens').doc(ADMIN_UID).delete();
+      console.info('[notify]', 'fcm_token_unregistered', e.code);
       return res.status(200).json({ success: false, note: 'Token deleted — resubscribe needed' });
     }
+    console.info('[notify]', 'fcm_error', e.code);
     return res.status(500).json({ error: 'FCM error' });
   }
 };
