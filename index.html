@@ -440,6 +440,7 @@ body.sb-dragging * {
   transition: all 0.2s;
 }
 .a-logout-btn:active { background: #ef4444; color: white; border-color: #ef4444; }
+.a-push-status { font-size: 11px; color: var(--adm-muted); text-align: center; line-height: 1.6; }
 
 
 /* ============================================================
@@ -816,6 +817,8 @@ body.sb-dragging * {
               <span>✅</span>
               <span id="loggedEmail" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
             </div>
+            <div id="pushStatus" class="a-push-status" aria-live="polite">الإشعارات: غير مفعّلة ❌</div>
+            <button type="button" class="a-login-btn" onclick="enableAdminPush()">إعادة تفعيل الإشعارات</button>
             <button class="a-open-dash" onclick="openAdminDashboard()">
               <span>📊</span><span>فتح لوحة التحكم</span>
             </button>
@@ -965,10 +968,15 @@ function applyAuthState(user) {
   if ('Notification' in window) {
     if (Notification.permission === 'default') {
       Promise.resolve(Notification.requestPermission())
-        .then(permission => permission === 'granted' && enableAdminPush())
+        .then(permission => {
+          if (permission === 'granted') return enableAdminPush();
+          setPushStatus('disabled', 'permission_denied');
+        })
         .catch(error => console.warn('Notification permission request failed', error));
     } else if (Notification.permission === 'granted') {
       enableAdminPush();
+    } else {
+      setPushStatus('disabled', 'permission_denied');
     }
   }
 }
@@ -1781,12 +1789,52 @@ async function deleteArea(id) {
 // ──────────────────────────────────────────────────
 // NEW: FCM Subscribe — للأدمن فقط
 // ──────────────────────────────────────────────────
+const VAPID_KEY = 'BKD3q5RAcbUQGAUaVChKtiPK0nIY6V-NtFhh0Rk9cFhEMQ4QX9IyKqiy5VpTddcx7-M3G3aHcKlslOF3b8beK58';
+
+function setPushStatus(state, reason) {
+  const status = document.getElementById('pushStatus');
+  if (!status) return;
+  if (state === 'enabled') {
+    status.textContent = 'الإشعارات: مفعّلة ✅';
+  } else if (state === 'pending') {
+    status.textContent = 'الإشعارات: جاري التفعيل...';
+  } else {
+    status.textContent = `الإشعارات: غير مفعّلة ❌ (السبب: ${reason})`;
+  }
+}
+
 async function enableAdminPush() {
   const user = authStateUser;
-  if (!isAdminSession() || !user || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!isAdminSession() || !user) return;
+  if (!('Notification' in window)) {
+    setPushStatus('disabled', 'NotificationUnsupported');
+    return;
+  }
+  if (Notification.permission !== 'granted') {
+    setPushStatus('disabled', 'permission_denied');
+    return;
+  }
+
+  setPushStatus('pending');
   try {
+    if (!('serviceWorker' in navigator)) {
+      const error = new Error();
+      error.name = 'ServiceWorkerUnsupported';
+      throw error;
+    }
+    const existingRegistration = await navigator.serviceWorker.getRegistration();
+    const serviceWorkerRegistration = existingRegistration
+      || await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const readyRegistration = await navigator.serviceWorker.ready;
     const messaging = await loadFirebaseMessaging();
-    const token = await messaging.getToken();
+    const token = await messaging.getToken({
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: readyRegistration || serviceWorkerRegistration
+    });
+    if (!token) {
+      setPushStatus('disabled', 'TokenUnavailable');
+      return;
+    }
     const tokenRef = db.collection('fcm_tokens').doc(user.uid);
     const doc = await tokenRef.get();
     if (!doc.exists || doc.data().token !== token) {
@@ -1797,8 +1845,11 @@ async function enableAdminPush() {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     }
+    setPushStatus('enabled');
   } catch (e) {
-    console.warn('FCM setup failed', e);
+    const reason = e?.code || e?.name || 'UnknownError';
+    setPushStatus('disabled', reason);
+    console.warn('FCM setup failed:', reason);
   }
 }
 
