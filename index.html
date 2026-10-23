@@ -818,7 +818,7 @@ body.sb-dragging * {
               <span id="loggedEmail" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
             </div>
             <div id="pushStatus" class="a-push-status" aria-live="polite">الإشعارات: غير مفعّلة ❌</div>
-            <button type="button" class="a-login-btn" onclick="enableAdminPush()">إعادة تفعيل الإشعارات</button>
+            <button type="button" class="a-login-btn" onclick="reenablePush()">إعادة تفعيل الإشعارات</button>
             <button class="a-open-dash" onclick="openAdminDashboard()">
               <span>📊</span><span>فتح لوحة التحكم</span>
             </button>
@@ -970,7 +970,7 @@ function applyAuthState(user) {
       Promise.resolve(Notification.requestPermission())
         .then(permission => {
           if (permission === 'granted') return enableAdminPush();
-          setPushStatus('disabled', 'permission_denied');
+          setPushStatus('disabled', permission === 'default' ? 'permission_default' : 'permission_denied');
         })
         .catch(error => console.warn('Notification permission request failed', error));
     } else if (Notification.permission === 'granted') {
@@ -1798,8 +1798,40 @@ function setPushStatus(state, reason) {
     status.textContent = 'الإشعارات: مفعّلة ✅';
   } else if (state === 'pending') {
     status.textContent = 'الإشعارات: جاري التفعيل...';
+  } else if (state === 'permission_denied') {
+    status.textContent = 'الإشعارات: مرفوضة من كروم، افتح إعدادات الموقع وفعّل Notifications ثم أعد المحاولة.';
   } else {
     status.textContent = `الإشعارات: غير مفعّلة ❌ (السبب: ${reason})`;
+  }
+}
+
+async function reenablePush() {
+  if (!isAdminSession()) return;
+  if (!('Notification' in window)) {
+    setPushStatus('disabled', 'NotificationUnsupported');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    return enableAdminPush();
+  }
+  if (Notification.permission === 'denied') {
+    setPushStatus('permission_denied');
+    return;
+  }
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      return enableAdminPush();
+    }
+    if (permission === 'denied') {
+      setPushStatus('permission_denied');
+    } else {
+      setPushStatus('disabled', 'permission_default');
+    }
+  } catch (e) {
+    const reason = e?.code || e?.name || 'PermissionRequestFailed';
+    setPushStatus('disabled', reason);
+    console.warn('Notification permission request failed:', reason);
   }
 }
 
@@ -1811,7 +1843,7 @@ async function enableAdminPush() {
     return;
   }
   if (Notification.permission !== 'granted') {
-    setPushStatus('disabled', 'permission_denied');
+    setPushStatus('disabled', Notification.permission === 'default' ? 'permission_default' : 'permission_denied');
     return;
   }
 
