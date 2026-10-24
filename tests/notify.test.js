@@ -8,7 +8,10 @@ const state = {
   shouldRejectToken: false,
   verifiedAppId: '1:972743740267:web:24eb04cf828b545a41da2e',
   documentExists: true,
-  fcmToken: 'test-fcm-token'
+  fcmTokens: ['test-fcm-token'],
+  legacyToken: null,
+  sendResponses: null,
+  tokenUpdates: []
 };
 
 const fakeAdmin = {
@@ -25,10 +28,15 @@ const fakeAdmin = {
               async get() {
                 return {
                   exists: state.documentExists,
-                  data: () => ({ token: state.fcmToken })
+                  data: () => ({
+                    tokens: state.fcmTokens,
+                    ...(state.legacyToken ? { token: state.legacyToken } : {})
+                  })
                 };
               },
-              async delete() {}
+              async update(fields) {
+                state.tokenUpdates.push(fields);
+              }
             };
           }
         };
@@ -46,11 +54,22 @@ const fakeAdmin = {
   },
   messaging() {
     return {
-      async send(message) {
+      async sendEachForMulticast(message) {
         state.sentMessages.push(message);
-        return 'test-message-id';
+        const responses = state.sendResponses || message.tokens.map(() => ({ success: true }));
+        return {
+          responses,
+          successCount: responses.filter(response => response.success).length,
+          failureCount: responses.filter(response => !response.success).length
+        };
       }
     };
+  }
+};
+
+fakeAdmin.firestore.FieldValue = {
+  arrayRemove(...values) {
+    return { operation: 'arrayRemove', values };
   }
 };
 
@@ -101,7 +120,10 @@ test.beforeEach(() => {
   state.shouldRejectToken = false;
   state.verifiedAppId = '1:972743740267:web:24eb04cf828b545a41da2e';
   state.documentExists = true;
-  state.fcmToken = 'test-fcm-token';
+  state.fcmTokens = ['test-fcm-token'];
+  state.legacyToken = null;
+  state.sendResponses = null;
+  state.tokenUpdates.length = 0;
 });
 
 test('allows a valid App Check token without NOTIFY_SECRET and sends the notification', async () => {
@@ -111,11 +133,51 @@ test('allows a valid App Check token without NOTIFY_SECRET and sends the notific
   assert.deepEqual(response.body, { success: true });
   assert.deepEqual(state.verifyCalls, ['verified-app-check-token']);
   assert.equal(state.sentMessages.length, 1);
+  assert.deepEqual(state.sentMessages[0].tokens, ['test-fcm-token']);
   assert.match(state.sentMessages[0].data.body, /Android · Chrome · phone/);
+  assert.equal(state.sentMessages[0].webpush.headers.Urgency, 'high');
   assert.equal(response.headers['Access-Control-Allow-Methods'], 'POST, OPTIONS');
   assert.equal(response.headers['Access-Control-Allow-Origin'], 'https://amasushi-prices.vercel.app');
   assert.match(response.headers['Access-Control-Allow-Headers'], /X-Firebase-AppCheck/);
   assert.doesNotMatch(response.headers['Access-Control-Allow-Headers'], /X-Notify-Secret/);
+});
+
+test('sends to all registered device tokens and accepts the legacy token field', async () => {
+  state.fcmTokens = ['device-a', 'device-b'];
+  state.legacyToken = 'legacy-device';
+  const response = await invoke(makeRequest());
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(state.sentMessages[0].tokens, ['legacy-device', 'device-a', 'device-b']);
+  assert.equal(state.sentMessages[0].data.title, '🛵 زيارة جديدة — اما سوشي');
+});
+
+test('prunes only invalid registration tokens while preserving successful sends', async () => {
+  state.fcmTokens = ['good-device', 'stale-device'];
+  state.sendResponses = [
+    { success: true },
+    { success: false, error: { code: 'messaging/registration-token-not-registered' } }
+  ];
+  const response = await invoke(makeRequest());
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(state.tokenUpdates, [{
+    tokens: { operation: 'arrayRemove', values: ['stale-device'] }
+  }]);
+});
+
+test('returns an error when all multicast sends fail', async () => {
+  state.fcmTokens = ['stale-a', 'stale-b'];
+  state.sendResponses = [
+    { success: false, error: { code: 'messaging/invalid-registration-token' } },
+    { success: false, error: { code: 'messaging/registration-token-not-registered' } }
+  ];
+  const response = await invoke(makeRequest());
+
+  assert.equal(response.statusCode, 500);
+  assert.deepEqual(state.tokenUpdates, [{
+    tokens: { operation: 'arrayRemove', values: ['stale-a', 'stale-b'] }
+  }]);
 });
 
 test('rejects a request without an App Check token', async () => {
