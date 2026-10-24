@@ -1523,9 +1523,51 @@ async function doLogin() {
   }
 }
 
+async function removeCurrentPushToken() {
+  if (!isAdminSession() || !authStateUser || !('Notification' in window)
+      || Notification.permission !== 'granted') return;
+
+  let messaging = null;
+  try {
+    messaging = await loadFirebaseMessaging();
+  } catch (e) {
+    console.warn('FCM cleanup failed:', e?.code || e?.name || 'UnknownError');
+    return;
+  }
+
+  try {
+    let token = null;
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) {
+        const readyRegistration = await navigator.serviceWorker.ready;
+        token = await messaging.getToken({
+          vapidKey: VAPID_KEY,
+          serviceWorkerRegistration: readyRegistration || registration
+        });
+      }
+    }
+    if (token) {
+      await db.collection('fcm_tokens').doc(authStateUser.uid).set({
+        tokens: firebase.firestore.FieldValue.arrayRemove(token),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+  } catch (e) {
+    console.warn('FCM cleanup failed:', e?.code || e?.name || 'UnknownError');
+  }
+
+  try {
+    await messaging.deleteToken();
+  } catch (e) {
+    console.warn('FCM token deletion failed:', e?.code || e?.name || 'UnknownError');
+  }
+}
+
 async function doLogout() {
   try {
     const authInstance = auth || await loadFirebaseAuth();
+    await removeCurrentPushToken();
     pushRegistrationComplete = false;
     pushSetupInProgress = false;
     lastPushFailureReason = null;
@@ -2035,14 +2077,31 @@ async function enableAdminPush() {
     }
     const tokenRef = db.collection('fcm_tokens').doc(user.uid);
     const doc = await tokenRef.get();
-    if (!doc.exists || doc.data().token !== token) {
-      await tokenRef.set({
-        token,
-        uid: user.uid,
-        email: user.email || '',
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+    const stored = doc.exists ? (doc.data() || {}) : {};
+    const currentTokens = Array.isArray(stored.tokens)
+      ? stored.tokens.filter(value => typeof value === 'string' && value.trim())
+      : [];
+    const legacyTokens = typeof stored.token === 'string' && stored.token.trim()
+      ? [stored.token]
+      : [];
+    const mergedTokens = [...new Set([token, ...legacyTokens, ...currentTokens])];
+    const tokenUpdate = {
+      uid: user.uid,
+      email: user.email || '',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (mergedTokens.length <= 10) {
+      const additions = mergedTokens.filter(value => !currentTokens.includes(value));
+      tokenUpdate.tokens = additions.length
+        ? firebase.firestore.FieldValue.arrayUnion(...additions)
+        : firebase.firestore.FieldValue.arrayUnion(token);
+    } else {
+      tokenUpdate.tokens = mergedTokens.slice(0, 10);
     }
+    if (typeof stored.token === 'string') {
+      tokenUpdate.token = firebase.firestore.FieldValue.delete();
+    }
+    await tokenRef.set(tokenUpdate, { merge: true });
     pushSetupInProgress = false;
     pushRegistrationComplete = true;
     lastPushFailureReason = null;

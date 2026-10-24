@@ -99,16 +99,25 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'Invalid notification payload' });
   }
 
-  // ── جيب FCM Token ──
-  let token;
+  // ── جيب FCM Tokens ──
+  let tokenRef;
+  let tokens;
   try {
-    const doc = await db.collection('fcm_tokens').doc(ADMIN_UID).get();
+    tokenRef = db.collection('fcm_tokens').doc(ADMIN_UID);
+    const doc = await tokenRef.get();
     if (!doc.exists) {
       console.info('[notify]', 'no_token_doc');
       return res.status(200).json({ success: false, note: 'No token yet' });
     }
-    token = doc.data().token;
-    if (typeof token !== 'string' || !token.trim()) {
+    const stored = doc.data() || {};
+    const storedTokens = Array.isArray(stored.tokens)
+      ? stored.tokens.filter(token => typeof token === 'string' && token.trim())
+      : [];
+    const legacyToken = typeof stored.token === 'string' && stored.token.trim()
+      ? [stored.token]
+      : [];
+    tokens = [...new Set([...legacyToken, ...storedTokens])].slice(0, 10);
+    if (!tokens.length) {
       console.info('[notify]', 'no_token_doc');
       return res.status(200).json({ success: false, note: 'Empty token' });
     }
@@ -129,8 +138,8 @@ module.exports = async (req, res) => {
 
   // ── إرسال FCM — data-only payload ──
   try {
-    await admin.messaging().send({
-      token,
+    const response = await admin.messaging().sendEachForMulticast({
+      tokens,
       data: {
         title: notifTitle,
         body: notifBody
@@ -143,15 +152,33 @@ module.exports = async (req, res) => {
       }
     });
 
-    console.info('[notify]', 'fcm_sent');
-    return res.status(200).json({ success: true });
-  } catch (e) {
-    // لو التوكن فاسد — امسحه تلقائياً
-    if (e.code === 'messaging/registration-token-not-registered') {
-      await db.collection('fcm_tokens').doc(ADMIN_UID).delete();
-      console.info('[notify]', 'fcm_token_unregistered', e.code);
-      return res.status(200).json({ success: false, note: 'Token deleted — resubscribe needed' });
+    const invalidTokens = response.responses
+      .map((result, index) => ({ result, token: tokens[index] }))
+      .filter(({ result }) => !result.success && [
+        'messaging/registration-token-not-registered',
+        'messaging/invalid-registration-token'
+      ].includes(result.error?.code))
+      .map(({ token }) => token);
+
+    if (invalidTokens.length) {
+      try {
+        await tokenRef.update({
+          tokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens)
+        });
+        console.info('[notify]', 'fcm_token_pruned', invalidTokens.length);
+      } catch (e) {
+        console.info('[notify]', 'firestore_error', e.code);
+      }
     }
+
+    if (response.successCount > 0) {
+      console.info('[notify]', 'fcm_sent', response.successCount);
+      return res.status(200).json({ success: true });
+    }
+
+    console.info('[notify]', 'fcm_all_failed', tokens.length);
+    return res.status(500).json({ error: 'FCM error' });
+  } catch (e) {
     console.info('[notify]', 'fcm_error', e.code);
     return res.status(500).json({ error: 'FCM error' });
   }
