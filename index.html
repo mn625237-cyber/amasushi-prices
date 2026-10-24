@@ -913,6 +913,7 @@ let authStateUser = null;
 let messagingLoadPromise = null;
 let pushRegistrationComplete = false;
 let pushSetupInProgress = false;
+let lastPushFailureReason = null;
 let pushUiListenersReady = false;
 const db = firebase.firestore();
 
@@ -987,6 +988,7 @@ function applyAuthState(user) {
   if (!adminUser) {
     pushRegistrationComplete = false;
     pushSetupInProgress = false;
+    lastPushFailureReason = null;
     refreshPushUi();
     closeAdminDashboard();
     closeAreaModal();
@@ -1524,6 +1526,10 @@ async function doLogin() {
 async function doLogout() {
   try {
     const authInstance = auth || await loadFirebaseAuth();
+    pushRegistrationComplete = false;
+    pushSetupInProgress = false;
+    lastPushFailureReason = null;
+    refreshPushUi();
     await authInstance.signOut();
     document.getElementById('aPass').value = '';
     closeAdminDashboard();
@@ -1843,7 +1849,7 @@ function refreshPushStatus() {
   } else if (pushSetupInProgress) {
     setPushStatus('pending');
   } else {
-    setPushStatus('disabled', 'registration_incomplete');
+    setPushStatus('disabled', lastPushFailureReason || 'registration_incomplete');
   }
 }
 
@@ -1851,7 +1857,8 @@ function refreshPushActivationBanner() {
   const banner = document.getElementById('pushActivationBanner');
   if (!banner) return;
   const permission = 'Notification' in window ? Notification.permission : 'n/a';
-  const shouldShow = isAdminSession() && (permission !== 'granted' || !pushRegistrationComplete);
+  const shouldShow = isAdminSession() && !pushSetupInProgress
+    && (permission !== 'granted' || !pushRegistrationComplete);
   const denied = permission === 'denied';
   banner.classList.toggle('show', shouldShow);
   banner.classList.toggle('denied', denied);
@@ -1943,14 +1950,18 @@ async function reenablePush() {
   if (!isAdminSession()) return;
   refreshPushUi();
   if (!('Notification' in window)) {
+    lastPushFailureReason = 'NotificationUnsupported';
     setPushStatus('disabled', 'NotificationUnsupported');
+    refreshPushUi();
     return;
   }
   if (Notification.permission === 'granted') {
     return enableAdminPush();
   }
   if (Notification.permission === 'denied') {
+    lastPushFailureReason = 'permission_denied';
     setPushStatus('permission_denied');
+    refreshPushUi();
     return;
   }
   try {
@@ -1959,12 +1970,15 @@ async function reenablePush() {
       return enableAdminPush();
     }
     if (permission === 'denied') {
+      lastPushFailureReason = 'permission_denied';
       setPushStatus('permission_denied');
     } else {
+      lastPushFailureReason = 'permission_default';
       setPushStatus('disabled', 'permission_default');
     }
   } catch (e) {
     const reason = e?.code || e?.name || 'PermissionRequestFailed';
+    lastPushFailureReason = reason;
     setPushStatus('disabled', reason);
     console.warn('Notification permission request failed:', reason);
   }
@@ -1974,14 +1988,17 @@ async function reenablePush() {
 async function enableAdminPush() {
   const user = authStateUser;
   if (!isAdminSession() || !user) return;
+  if (pushSetupInProgress) return;
   if (!('Notification' in window)) {
     pushSetupInProgress = false;
+    lastPushFailureReason = 'NotificationUnsupported';
     setPushStatus('disabled', 'NotificationUnsupported');
     refreshPushUi();
     return;
   }
   if (Notification.permission !== 'granted') {
     pushSetupInProgress = false;
+    lastPushFailureReason = Notification.permission === 'default' ? 'permission_default' : 'permission_denied';
     if (Notification.permission === 'default') {
       setPushStatus('disabled', 'permission_default');
     } else {
@@ -2011,6 +2028,7 @@ async function enableAdminPush() {
     });
     if (!token) {
       pushSetupInProgress = false;
+      lastPushFailureReason = 'TokenUnavailable';
       setPushStatus('disabled', 'TokenUnavailable');
       refreshPushUi();
       return;
@@ -2027,11 +2045,13 @@ async function enableAdminPush() {
     }
     pushSetupInProgress = false;
     pushRegistrationComplete = true;
+    lastPushFailureReason = null;
     setPushStatus('enabled');
     refreshPushUi();
   } catch (e) {
     pushSetupInProgress = false;
     const reason = e?.code || e?.name || 'UnknownError';
+    lastPushFailureReason = reason;
     setPushStatus('disabled', reason);
     console.warn('FCM setup failed:', reason);
     refreshPushUi();
