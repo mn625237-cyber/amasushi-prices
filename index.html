@@ -447,6 +447,25 @@ body.sb-dragging * {
   align-self: center; padding: 2px 6px; border: 0; background: transparent;
   color: var(--adm-muted); font-family: 'Cairo', sans-serif; font-size: 9px; cursor: pointer;
 }
+#pushActivationBanner {
+  position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
+  width: min(92vw, 500px); z-index: 80; display: none;
+  align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--primary);
+  border-radius: 12px; background: var(--adm-surface);
+  color: var(--adm-text); box-shadow: 0 6px 22px rgba(0,0,0,0.18);
+  text-align: right;
+}
+#pushActivationBanner.show { display: flex; }
+.push-banner-title { font-size: 11px; font-weight: 700; line-height: 1.5; }
+.push-banner-steps { display: none; margin-top: 3px; color: var(--adm-muted); font-size: 10px; line-height: 1.5; }
+#pushActivationBanner.denied .push-banner-steps { display: block; }
+.push-banner-action {
+  flex: 0 0 auto; padding: 7px 10px; border: none; border-radius: 8px;
+  background: var(--primary); color: white; font-family: 'Cairo', sans-serif;
+  font-size: 11px; font-weight: 700; cursor: pointer;
+}
+#pushActivationBanner.denied .push-banner-action { display: none; }
 
 
 /* ============================================================
@@ -697,6 +716,14 @@ body.sb-dragging * {
   </div>
 </div>
 
+<div id="pushActivationBanner" role="alert" aria-live="polite">
+  <div>
+    <div class="push-banner-title">🔔 الإشعارات مقفولة. اضغط لتفعيلها</div>
+    <div class="push-banner-steps">🔒 افتح إعدادات الموقع ← الأذونات ← الإشعارات ← سماح، ثم أعد تحميل الصفحة.</div>
+  </div>
+  <button class="push-banner-action" type="button" onclick="reenablePush()">تفعيل الإشعارات</button>
+</div>
+
 <!-- ============================================================
      MAIN APP — لا يتغير شيء هنا
      ============================================================ -->
@@ -884,6 +911,9 @@ let authLoadPromise = null;
 let authStateReady = null;
 let authStateUser = null;
 let messagingLoadPromise = null;
+let pushRegistrationComplete = false;
+let pushSetupInProgress = false;
+let pushUiListenersReady = false;
 const db = firebase.firestore();
 
 function loadFirebaseAuth() {
@@ -955,6 +985,9 @@ function applyAuthState(user) {
   }
 
   if (!adminUser) {
+    pushRegistrationComplete = false;
+    pushSetupInProgress = false;
+    refreshPushUi();
     closeAdminDashboard();
     closeAreaModal();
     return;
@@ -969,7 +1002,7 @@ function applyAuthState(user) {
       setPushStatus('permission_denied');
     }
   }
-  updatePushDiagnostics();
+  refreshPushUi();
 }
 
 function renderLoggedState() {
@@ -1432,7 +1465,10 @@ function startVoiceSearch() {
 function toggleAcc(name) {
   const acc = document.getElementById('acc-' + name);
   acc.classList.toggle('open');
-  if (name === 'admin') renderLoggedState();
+  if (name === 'admin') {
+    renderLoggedState();
+    refreshPushUi();
+  }
 }
 
 function openSidebar() {
@@ -1796,6 +1832,53 @@ function setPushStatus(state, reason) {
   }
 }
 
+function refreshPushStatus() {
+  if (!isAdminSession()) return;
+  if (!('Notification' in window) || Notification.permission === 'default') {
+    setPushStatus('disabled', !('Notification' in window) ? 'NotificationUnsupported' : 'permission_default');
+  } else if (Notification.permission === 'denied') {
+    setPushStatus('permission_denied');
+  } else if (pushRegistrationComplete) {
+    setPushStatus('enabled');
+  } else if (pushSetupInProgress) {
+    setPushStatus('pending');
+  } else {
+    setPushStatus('disabled', 'registration_incomplete');
+  }
+}
+
+function refreshPushActivationBanner() {
+  const banner = document.getElementById('pushActivationBanner');
+  if (!banner) return;
+  const permission = 'Notification' in window ? Notification.permission : 'n/a';
+  const shouldShow = isAdminSession() && (permission !== 'granted' || !pushRegistrationComplete);
+  const denied = permission === 'denied';
+  banner.classList.toggle('show', shouldShow);
+  banner.classList.toggle('denied', denied);
+  const button = banner.querySelector('.push-banner-action');
+  if (button) button.disabled = !shouldShow || denied;
+}
+
+function setupPushUiListeners() {
+  if (pushUiListenersReady) return;
+  pushUiListenersReady = true;
+  document.addEventListener('visibilitychange', refreshPushUi);
+  if (navigator.permissions?.query) {
+    navigator.permissions.query({ name: 'notifications' }).then(permission => {
+      if (typeof permission.addEventListener === 'function') {
+        permission.addEventListener('change', refreshPushUi);
+      }
+    }).catch(() => {});
+  }
+}
+
+function refreshPushUi() {
+  setupPushUiListeners();
+  refreshPushStatus();
+  refreshPushActivationBanner();
+  updatePushDiagnostics();
+}
+
 function togglePushDiagnostics() {
   const diagnostics = document.getElementById('pushDiagnostics');
   const button = document.getElementById('pushDiagnosticsToggle');
@@ -1858,7 +1941,7 @@ async function updatePushDiagnostics() {
 
 async function reenablePush() {
   if (!isAdminSession()) return;
-  updatePushDiagnostics();
+  refreshPushUi();
   if (!('Notification' in window)) {
     setPushStatus('disabled', 'NotificationUnsupported');
     return;
@@ -1885,25 +1968,31 @@ async function reenablePush() {
     setPushStatus('disabled', reason);
     console.warn('Notification permission request failed:', reason);
   }
-  updatePushDiagnostics();
+  refreshPushUi();
 }
 
 async function enableAdminPush() {
   const user = authStateUser;
   if (!isAdminSession() || !user) return;
   if (!('Notification' in window)) {
+    pushSetupInProgress = false;
     setPushStatus('disabled', 'NotificationUnsupported');
+    refreshPushUi();
     return;
   }
   if (Notification.permission !== 'granted') {
+    pushSetupInProgress = false;
     if (Notification.permission === 'default') {
       setPushStatus('disabled', 'permission_default');
     } else {
       setPushStatus('permission_denied');
     }
+    refreshPushUi();
     return;
   }
 
+  pushRegistrationComplete = false;
+  pushSetupInProgress = true;
   setPushStatus('pending');
   try {
     if (!('serviceWorker' in navigator)) {
@@ -1921,7 +2010,9 @@ async function enableAdminPush() {
       serviceWorkerRegistration: readyRegistration || serviceWorkerRegistration
     });
     if (!token) {
+      pushSetupInProgress = false;
       setPushStatus('disabled', 'TokenUnavailable');
+      refreshPushUi();
       return;
     }
     const tokenRef = db.collection('fcm_tokens').doc(user.uid);
@@ -1934,11 +2025,16 @@ async function enableAdminPush() {
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     }
+    pushSetupInProgress = false;
+    pushRegistrationComplete = true;
     setPushStatus('enabled');
+    refreshPushUi();
   } catch (e) {
+    pushSetupInProgress = false;
     const reason = e?.code || e?.name || 'UnknownError';
     setPushStatus('disabled', reason);
     console.warn('FCM setup failed:', reason);
+    refreshPushUi();
   }
 }
 
