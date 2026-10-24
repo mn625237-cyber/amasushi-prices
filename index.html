@@ -441,7 +441,12 @@ body.sb-dragging * {
 }
 .a-logout-btn:active { background: #ef4444; color: white; border-color: #ef4444; }
 .a-push-status { font-size: 11px; color: var(--adm-muted); text-align: center; line-height: 1.6; }
-.a-push-diagnostics { font-size: 9px; color: #94a3b8; line-height: 1.6; word-break: break-word; }
+.a-push-diagnostics { display: none; font-size: 9px; color: #94a3b8; line-height: 1.6; word-break: break-word; }
+.a-push-diagnostics.show { display: block; }
+.a-tech-toggle {
+  align-self: center; padding: 2px 6px; border: 0; background: transparent;
+  color: var(--adm-muted); font-family: 'Cairo', sans-serif; font-size: 9px; cursor: pointer;
+}
 #pushActivationBanner {
   position: fixed; top: 72px; left: 50%; transform: translateX(-50%);
   width: min(92vw, 500px); z-index: 80; display: none;
@@ -549,19 +554,6 @@ body.sb-dragging * {
 .log-item:last-child { border-bottom: none; }
 .log-dev  { color: var(--adm-secondary); flex: 1; line-height: 1.5; }
 .log-time { color: var(--adm-muted); font-size: 10px; white-space: nowrap; padding-right: 6px; }
-
-/* Missing searches */
-.miss-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 7px 10px; background: var(--adm-bg);
-  border-radius: 8px; margin-bottom: 5px;
-}
-.miss-q   { font-size: 12px; color: var(--adm-text); }
-.miss-cnt {
-  background: var(--primary); color: white;
-  font-size: 10px; font-weight: 700;
-  padding: 2px 8px; border-radius: 999px;
-}
 
 /* Coming Soon */
 .coming-soon {
@@ -846,6 +838,7 @@ body.sb-dragging * {
               <span id="loggedEmail" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span>
             </div>
             <div id="pushStatus" class="a-push-status" aria-live="polite">الإشعارات: غير مفعّلة ❌</div>
+            <button id="pushDiagnosticsToggle" class="a-tech-toggle" type="button" aria-expanded="false" onclick="togglePushDiagnostics()">تفاصيل فنية</button>
             <div id="pushDiagnostics" class="a-push-diagnostics" aria-live="polite">تشخيص الإشعارات: جاري الفحص...</div>
             <button type="button" class="a-login-btn" onclick="reenablePush()">إعادة تفعيل الإشعارات</button>
             <button class="a-open-dash" onclick="openAdminDashboard()">
@@ -1884,6 +1877,14 @@ function refreshPushUi() {
   refreshPushStatus();
   refreshPushActivationBanner();
   updatePushDiagnostics();
+}
+
+function togglePushDiagnostics() {
+  const diagnostics = document.getElementById('pushDiagnostics');
+  const button = document.getElementById('pushDiagnosticsToggle');
+  if (!diagnostics || !button) return;
+  const visible = diagnostics.classList.toggle('show');
+  button.setAttribute('aria-expanded', String(visible));
 }
 
 function getNotificationBrowserName() {

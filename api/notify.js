@@ -42,7 +42,7 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Firebase-AppCheck, X-Timestamp');
 
   if (req.method === 'OPTIONS') {
-    console.info('[notify]', 'method_not_allowed');
+    console.info('[notify]', 'preflight');
     return res.status(200).end();
   }
 
