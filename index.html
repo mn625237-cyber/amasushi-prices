@@ -459,7 +459,8 @@ body.sb-dragging * {
 #pushActivationBanner.show { display: flex; }
 .push-banner-title { font-size: 11px; font-weight: 700; line-height: 1.5; }
 .push-banner-steps { display: none; margin-top: 3px; color: var(--adm-muted); font-size: 10px; line-height: 1.5; }
-#pushActivationBanner.denied .push-banner-steps { display: block; }
+#pushActivationBanner.denied .push-banner-steps,
+#pushActivationBanner.prompt-suppressed .push-banner-steps { display: block; }
 .push-banner-action {
   flex: 0 0 auto; padding: 7px 10px; border: none; border-radius: 8px;
   background: var(--primary); color: white; font-family: 'Cairo', sans-serif;
@@ -718,8 +719,8 @@ body.sb-dragging * {
 
 <div id="pushActivationBanner" role="alert" aria-live="polite">
   <div>
-    <div class="push-banner-title">🔔 الإشعارات مقفولة. اضغط لتفعيلها</div>
-    <div class="push-banner-steps">🔒 افتح إعدادات الموقع ← الأذونات ← الإشعارات ← سماح، ثم أعد تحميل الصفحة.</div>
+    <div class="push-banner-title" id="pushBannerTitle">🔔 الإشعارات مقفولة. اضغط لتفعيلها</div>
+    <div class="push-banner-steps" id="pushBannerSteps">🔒 افتح إعدادات الموقع ← الأذونات ← الإشعارات ← سماح، ثم أعد تحميل الصفحة.</div>
   </div>
   <button class="push-banner-action" type="button" onclick="reenablePush()">تفعيل الإشعارات</button>
 </div>
@@ -914,6 +915,8 @@ let messagingLoadPromise = null;
 let pushRegistrationComplete = false;
 let pushSetupInProgress = false;
 let lastPushFailureReason = null;
+let promptSuppressed = false;
+let permissionRequestInProgress = false;
 let pushUiListenersReady = false;
 const db = firebase.firestore();
 
@@ -989,6 +992,8 @@ function applyAuthState(user) {
     pushRegistrationComplete = false;
     pushSetupInProgress = false;
     lastPushFailureReason = null;
+    promptSuppressed = false;
+    permissionRequestInProgress = false;
     refreshPushUi();
     closeAdminDashboard();
     closeAreaModal();
@@ -1571,6 +1576,8 @@ async function doLogout() {
     pushRegistrationComplete = false;
     pushSetupInProgress = false;
     lastPushFailureReason = null;
+    promptSuppressed = false;
+    permissionRequestInProgress = false;
     refreshPushUi();
     await authInstance.signOut();
     document.getElementById('aPass').value = '';
@@ -1871,6 +1878,10 @@ function setPushStatus(state, reason) {
   if (!status) return;
   if (state === 'enabled') {
     status.textContent = 'الإشعارات: مفعّلة ✅';
+  } else if (state === 'permission_pending') {
+    status.textContent = 'الإشعارات: جاري طلب الإذن…';
+  } else if (state === 'prompt_suppressed') {
+    status.textContent = 'الإشعارات: المتصفح لم يعرض نافذة السماح.';
   } else if (state === 'pending') {
     status.textContent = 'الإشعارات: جاري التفعيل...';
   } else if (state === 'permission_denied') {
@@ -1880,9 +1891,21 @@ function setPushStatus(state, reason) {
   }
 }
 
+function getPromptSuppressedSteps() {
+  const browser = getNotificationBrowserName();
+  if (browser === 'Chrome') {
+    return 'Chrome: ⋮ ← الإعدادات ← إعدادات الموقع الإلكتروني ← الإشعارات ← عطّل «استخدام رسائل أقل تدخلاً» ثم حدّث الصفحة واضغط تفعيل. قد يحجب كروم الطلب مؤقتاً لعدة أيام، فجرّب متصفحاً آخر.';
+  }
+  return `${browser === 'Opera' || browser === 'Samsung' ? browser : 'المتصفح'}: افتح إعدادات الموقع من قائمة المتصفح ← الإشعارات ← سماح، ثم حدّث الصفحة.`;
+}
+
 function refreshPushStatus() {
   if (!isAdminSession()) return;
-  if (!('Notification' in window) || Notification.permission === 'default') {
+  if (permissionRequestInProgress) {
+    setPushStatus('permission_pending');
+  } else if (promptSuppressed && 'Notification' in window && Notification.permission === 'default') {
+    setPushStatus('prompt_suppressed');
+  } else if (!('Notification' in window) || Notification.permission === 'default') {
     setPushStatus('disabled', !('Notification' in window) ? 'NotificationUnsupported' : 'permission_default');
   } else if (Notification.permission === 'denied') {
     setPushStatus('permission_denied');
@@ -1902,10 +1925,20 @@ function refreshPushActivationBanner() {
   const shouldShow = isAdminSession() && !pushSetupInProgress
     && (permission !== 'granted' || !pushRegistrationComplete);
   const denied = permission === 'denied';
+  const suppressed = promptSuppressed && permission === 'default';
+  const title = document.getElementById('pushBannerTitle');
+  const steps = document.getElementById('pushBannerSteps');
+  if (title) title.textContent = suppressed
+    ? '🔔 المتصفح لم يعرض نافذة السماح.'
+    : '🔔 الإشعارات مقفولة. اضغط لتفعيلها';
+  if (steps) steps.textContent = suppressed
+    ? getPromptSuppressedSteps()
+    : '🔒 افتح إعدادات الموقع ← الأذونات ← الإشعارات ← سماح، ثم أعد تحميل الصفحة.';
   banner.classList.toggle('show', shouldShow);
   banner.classList.toggle('denied', denied);
+  banner.classList.toggle('prompt-suppressed', suppressed);
   const button = banner.querySelector('.push-banner-action');
-  if (button) button.disabled = !shouldShow || denied;
+  if (button) button.disabled = !shouldShow || denied || permissionRequestInProgress;
 }
 
 function setupPushUiListeners() {
@@ -1990,7 +2023,6 @@ async function updatePushDiagnostics() {
 
 async function reenablePush() {
   if (!isAdminSession()) return;
-  refreshPushUi();
   if (!('Notification' in window)) {
     lastPushFailureReason = 'NotificationUnsupported';
     setPushStatus('disabled', 'NotificationUnsupported');
@@ -2006,19 +2038,27 @@ async function reenablePush() {
     refreshPushUi();
     return;
   }
+  permissionRequestInProgress = true;
+  setPushStatus('permission_pending');
+  refreshPushUi();
   try {
     const permission = await Notification.requestPermission();
+    permissionRequestInProgress = false;
     if (permission === 'granted') {
+      promptSuppressed = false;
       return enableAdminPush();
     }
     if (permission === 'denied') {
+      promptSuppressed = false;
       lastPushFailureReason = 'permission_denied';
       setPushStatus('permission_denied');
     } else {
+      promptSuppressed = true;
       lastPushFailureReason = 'permission_default';
-      setPushStatus('disabled', 'permission_default');
+      setPushStatus('prompt_suppressed');
     }
   } catch (e) {
+    permissionRequestInProgress = false;
     const reason = e?.code || e?.name || 'PermissionRequestFailed';
     lastPushFailureReason = reason;
     setPushStatus('disabled', reason);
@@ -2105,6 +2145,7 @@ async function enableAdminPush() {
     pushSetupInProgress = false;
     pushRegistrationComplete = true;
     lastPushFailureReason = null;
+    promptSuppressed = false;
     setPushStatus('enabled');
     refreshPushUi();
   } catch (e) {
