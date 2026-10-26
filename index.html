@@ -1478,24 +1478,81 @@ function toggleAcc(name) {
   }
 }
 
-function openSidebar() {
-  const sidebar = document.getElementById('sidebar');
+// Sidebar Open / Close — Button triggered
+// Generation guard يمنع stale callbacks بعد interrupt
+// ──────────────────────────────────────────────────
+const _SB_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+const _SB_DUR    = 300;
+
+let _sbAnimating  = false;
+let _sbGeneration = 0; // increments on each animation start, guards stale callbacks
+
+function _sbFinalize(gen, opening) {
+  // Guard: abort if a newer animation started (e.g. swipe interrupted button)
+  if (_sbGeneration !== gen) return;
+  const sidebar  = document.getElementById('sidebar');
   const backdrop = document.getElementById('sbBackdrop');
-  const menuBtn = document.getElementById('menuBtn');
-  sidebar.classList.add('open');
-  backdrop.classList.add('show');
-  menuBtn.classList.add('is-open');
+  const menuBtn  = document.getElementById('menuBtn');
+  requestAnimationFrame(() => {
+    sidebar.style.transition = 'none';
+    if (opening) {
+      sidebar.classList.add('open');
+      backdrop.classList.add('show');
+      menuBtn.classList.add('is-open');
+      document.body.style.overflow = 'hidden';
+    } else {
+      sidebar.classList.remove('open');
+      backdrop.classList.remove('show');
+      menuBtn.classList.remove('is-open');
+      document.body.style.overflow = '';
+    }
+    requestAnimationFrame(() => {
+      sidebar.style.transform      = '';
+      sidebar.style.transition     = '';
+      backdrop.style.opacity       = '';
+      backdrop.style.transition    = '';
+      backdrop.style.pointerEvents = '';
+      _sbAnimating = false;
+    });
+  });
+}
+
+function openSidebar() {
+  if (_sbAnimating) return;
+  _sbAnimating = true;
+  const gen     = ++_sbGeneration;
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sbBackdrop');
+
+  sidebar.style.transition  = `transform ${_SB_DUR}ms ${_SB_EASING}`;
+  backdrop.style.transition = `opacity ${_SB_DUR}ms ${_SB_EASING}`;
+  sidebar.style.transform   = 'translateX(0px)';
+  backdrop.style.opacity    = '1';
+  backdrop.style.pointerEvents = 'all';
+
+  // transitionend is primary — setTimeout is a safety fallback only
+  const done = () => _sbFinalize(gen, true);
+  sidebar.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, _SB_DUR + 50);
 }
 
 function closeSidebar() {
-  const sidebar = document.getElementById('sidebar');
+  if (_sbAnimating) return;
+  _sbAnimating = true;
+  const gen     = ++_sbGeneration;
+  const sidebar  = document.getElementById('sidebar');
   const backdrop = document.getElementById('sbBackdrop');
-  const menuBtn = document.getElementById('menuBtn');
-  sidebar.classList.remove('open');
-  backdrop.classList.remove('show');
-  menuBtn.classList.remove('is-open');
-}
 
+  sidebar.style.transition  = `transform ${_SB_DUR}ms ${_SB_EASING}`;
+  backdrop.style.transition = `opacity ${_SB_DUR}ms ${_SB_EASING}`;
+  sidebar.style.transform   = 'translateX(105%)';
+  backdrop.style.opacity    = '0';
+  backdrop.style.pointerEvents = 'none';
+
+  const done = () => _sbFinalize(gen, false);
+  sidebar.addEventListener('transitionend', done, { once: true });
+  setTimeout(done, _SB_DUR + 50);
+}
 async function doLogin() {
   const email = document.getElementById('aEmail').value.trim();
   const pass = document.getElementById('aPass').value;
@@ -2158,6 +2215,338 @@ async function enableAdminPush() {
   }
 }
 
+function initSidebarSwipe() {
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sbBackdrop');
+  const menuBtn  = document.getElementById('menuBtn');
+
+  // ─── Configuration ────────────────────────────────────
+  const OPEN_ZONE  = 0.22;   // right 22% = open zone
+  const DIR_LOCK   = 8;      // px before direction locked
+  const MIN_SWIPE  = 10;     // px horizontal intent
+  const POS_THRESH = 0.38;   // position fallback (38% visible)
+  const VEL_THRESH = 0.35;   // px/ms flick threshold
+  const RUBBER     = 0.22;   // rubber band resistance
+
+  // Reduced motion: stiffer spring + more damping = no overshoot
+  const _rm      = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SPRING_K = _rm ? 600 : 280;
+  const SPRING_D = _rm ? 60  : 28;
+  const VEL_SCALE = _rm ? 0  : 180; // no velocity injection if reduced motion
+
+  // ─── State Machine ────────────────────────────────────
+  const S = Object.freeze({ IDLE:0, DETECTING:1, DRAGGING:2, SNAPPING:3 });
+  let state   = S.IDLE;
+  let gesture = null;
+  let startX  = 0, startY = 0, curX = 0;
+  let sbW     = 0;
+
+  // ─── RAF Rendering Pipeline ───────────────────────────
+  // pointermove → writes targetX only (no DOM)
+  // drawFrame  → single DOM write per animation frame
+  let rafId   = null;
+  let targetX = 0;
+  let curTrans = 0;
+
+  function scheduleRender() {
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(drawFrame);
+  }
+
+  function drawFrame() {
+    rafId = null;
+    if (state !== S.DRAGGING) return;
+    curTrans = rubberBand(targetX);
+    sidebar.style.transform = `translateX(${curTrans}px)`;
+    syncOverlay(1 - Math.min(sbW, Math.max(0, curTrans)) / sbW);
+  }
+
+  // ─── Velocity Tracker ─────────────────────────────────
+  const vel = { pts: [], MAX: 6, AGE: 120 };
+  function velPush(x) {
+    const t = Date.now();
+    vel.pts.push({ x, t });
+    const cut = t - vel.AGE;
+    while (vel.pts.length > 1 && vel.pts[0].t < cut) vel.pts.shift();
+    if (vel.pts.length > vel.MAX) vel.pts.shift();
+  }
+  function velGet() {
+    if (vel.pts.length < 2) return 0;
+    const a = vel.pts[0], b = vel.pts[vel.pts.length - 1];
+    const dt = b.t - a.t;
+    return dt > 0 ? (b.x - a.x) / dt : 0; // px/ms, positive=right
+  }
+  function velReset() { vel.pts.length = 0; }
+
+  // ─── Helpers ──────────────────────────────────────────
+  const isOpen = () => sidebar.classList.contains('open');
+
+  // Rubber band: resistance beyond [0, sbW]
+  function rubberBand(x) {
+    if (x >= 0 && x <= sbW) return x;
+    return x < 0 ? x * RUBBER : sbW + (x - sbW) * RUBBER;
+  }
+
+  // Overlay sync — GPU-composited opacity
+  function syncOverlay(progress) {
+    backdrop.style.opacity       = Math.min(1, Math.max(0, progress)).toFixed(3);
+    backdrop.style.pointerEvents = progress > 0.01 ? 'all' : 'none';
+  }
+
+  // Read actual visual position (for animation interruption)
+  function getVisualX() {
+    const t = window.getComputedStyle(sidebar).transform;
+    if (!t || t === 'none') return isOpen() ? 0 : sbW;
+    const m = t.match(/matrix.*\((.+)\)/);
+    if (!m) return isOpen() ? 0 : sbW;
+    const vals = m[1].split(',');
+    return parseFloat(vals[vals.length - 2]) || 0;
+  }
+
+  // ─── Spring Physics Snap ──────────────────────────────
+  // JS spring loop — gives sidebar real "weight" and momentum
+  // Initial velocity from finger is injected at snap start
+  let springRafId  = null;
+  let springPos    = 0;
+  let springVel    = 0;
+  let springTarget = 0;
+  let springLast   = 0;
+  let snapTarget   = null; // 'open' | 'close'
+
+  function springTick(ts) {
+    if (!springLast) springLast = ts;
+    const dt = Math.min((ts - springLast) / 1000, 0.032); // max 32ms (2 frames @ 60fps)
+    springLast = ts;
+
+    // F = -K(pos - target) - D*vel
+    const force = -SPRING_K * (springPos - springTarget) - SPRING_D * springVel;
+    springVel  += force * dt;
+    springPos  += springVel * dt;
+
+    sidebar.style.transform = `translateX(${springPos}px)`;
+    syncOverlay(1 - Math.min(sbW, Math.max(0, springPos)) / sbW);
+
+    const settled = Math.abs(springPos - springTarget) < 0.5 && Math.abs(springVel) < 0.5;
+    if (!settled) {
+      springRafId = requestAnimationFrame(springTick);
+    } else {
+      springPos = springTarget;
+      springRafId = null;
+      springLast  = 0;
+      onSnapComplete();
+    }
+  }
+
+  function startSpring(targetPx, initVel) {
+    if (springRafId) { cancelAnimationFrame(springRafId); springRafId = null; }
+    _sbAnimating = true;
+    state        = S.SNAPPING;
+    springTarget = targetPx;
+    springPos    = curTrans;
+    springVel    = initVel;
+    springLast   = 0;
+    springRafId  = requestAnimationFrame(springTick);
+  }
+
+  function onSnapComplete() {
+    const opening = snapTarget === 'open';
+    ++_sbGeneration; // invalidate any pending button-triggered finalize
+    requestAnimationFrame(() => {
+      sidebar.style.transition = 'none';
+      if (opening) {
+        sidebar.classList.add('open');
+        backdrop.classList.add('show');
+        menuBtn.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
+        // Focus first interactive element for accessibility
+        requestAnimationFrame(() => sidebar.querySelector('.sb-close-btn')?.focus());
+      } else {
+        sidebar.classList.remove('open');
+        backdrop.classList.remove('show');
+        menuBtn.classList.remove('is-open');
+        document.body.style.overflow = '';
+        menuBtn.focus(); // return focus to trigger button
+      }
+      requestAnimationFrame(() => {
+        sidebar.style.transform      = '';
+        sidebar.style.transition     = '';
+        backdrop.style.opacity       = '';
+        backdrop.style.transition    = '';
+        backdrop.style.pointerEvents = '';
+        state        = S.IDLE;
+        _sbAnimating = false;
+      });
+    });
+  }
+
+  // ─── Animation Interruption ───────────────────────────
+  // Called when a new drag starts during a snap animation
+  // Reads actual visual position — no jump, no flicker
+  function interruptSnap() {
+    if (springRafId) { cancelAnimationFrame(springRafId); springRafId = null; }
+    curTrans = getVisualX();
+    targetX  = curTrans;
+    sidebar.style.transition = 'none';
+    _sbAnimating = false;
+    state = S.IDLE;
+  }
+
+  // ─── Snap Decision (velocity + position) ──────────────
+  function snapDecision() {
+    const v   = velGet();
+    const pct = 1 - Math.min(sbW, Math.max(0, curTrans)) / sbW;
+    if (gesture === 'close') {
+      if (v >  VEL_THRESH) return 'close';
+      if (v < -VEL_THRESH) return 'open';
+    } else {
+      if (v < -VEL_THRESH) return 'open';
+      if (v >  VEL_THRESH) return 'close';
+    }
+    return pct >= POS_THRESH ? 'open' : 'close';
+  }
+
+  // Inject finger velocity into spring for momentum feel
+  function executeSnap(direction) {
+    const v = velGet(); // px/ms
+    snapTarget = direction;
+    if (direction === 'open') {
+      // Target: 0 (open). Finger moving left (negative v) helps
+      const initVel = v < 0 ? v * VEL_SCALE : 0;
+      startSpring(0, initVel);
+    } else {
+      // Target: sbW (closed). Finger moving right (positive v) helps
+      const initVel = v > 0 ? v * VEL_SCALE : 0;
+      startSpring(sbW, initVel);
+    }
+  }
+
+  // ─── Clean Abort ──────────────────────────────────────
+  function abortDrag() {
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    state = S.IDLE;
+    sidebar.style.transition     = '';
+    sidebar.style.transform      = '';
+    backdrop.style.opacity       = '';
+    backdrop.style.transition    = '';
+    backdrop.style.pointerEvents = '';
+    document.body.classList.remove('sb-dragging');
+    velReset();
+  }
+
+  // ─── Pointer Down ─────────────────────────────────────
+  window.addEventListener('pointerdown', e => {
+    if (e.button && e.button !== 0)                  return;
+    if (e.target.closest('input,textarea,select'))   return;
+    if (e.target.closest('#menuBtn'))                return;
+
+    // Interrupt ongoing snap — start drag from current visual position
+    if (_sbAnimating || state === S.SNAPPING) {
+      interruptSnap();
+    } else if (state !== S.IDLE) {
+      return;
+    }
+
+    sbW = sidebar.offsetWidth || 280;
+    const open     = isOpen();
+    const fromEdge = e.clientX > window.innerWidth * (1 - OPEN_ZONE);
+    if (!open && !fromEdge) return;
+
+    state    = S.DETECTING;
+    gesture  = null;
+    startX   = e.clientX;
+    startY   = e.clientY;
+    curX     = e.clientX;
+    targetX  = open ? 0 : sbW;
+    curTrans = targetX;
+    velReset();
+
+    sidebar.style.transition  = 'none';
+    backdrop.style.transition = 'none';
+    sidebar.style.transform   = `translateX(${curTrans}px)`;
+    syncOverlay(1 - curTrans / sbW);
+
+    // Pointer Capture: guarantees events even outside viewport
+    try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+
+    document.body.classList.add('sb-dragging');
+  }, { passive: true });
+
+  // ─── Pointer Move ─────────────────────────────────────
+  window.addEventListener('pointermove', e => {
+    if (state !== S.DETECTING && state !== S.DRAGGING) return;
+    curX = e.clientX;
+
+    const dX = curX - startX;
+    const dY = Math.abs(e.clientY - startY);
+
+    // Direction Lock
+    if (state === S.DETECTING) {
+      if (Math.abs(dX) < DIR_LOCK && dY < DIR_LOCK) return;
+      if (Math.abs(dX) <= dY) { abortDrag(); return; } // vertical scroll
+      const open = isOpen();
+      if (!open && dX < -MIN_SWIPE)    gesture = 'open';
+      else if (open && dX > MIN_SWIPE) gesture = 'close';
+      else { abortDrag(); return; }
+      state = S.DRAGGING;
+    }
+
+    e.preventDefault();
+    velPush(curX);
+
+    // Write targetX only — RAF does the actual DOM render
+    targetX = gesture === 'open' ? sbW + dX : dX;
+    scheduleRender();
+
+  }, { passive: false });
+
+  // ─── Pointer Up / Cancel ──────────────────────────────
+  function onRelease() {
+    if (state === S.DETECTING) { abortDrag(); return; }
+    if (state !== S.DRAGGING)  return;
+
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    document.body.classList.remove('sb-dragging');
+
+    // Final render before snap
+    curTrans = rubberBand(targetX);
+    sidebar.style.transform = `translateX(${curTrans}px)`;
+
+    executeSnap(snapDecision());
+
+    startX = startY = curX = 0;
+    gesture = null;
+    velReset();
+  }
+
+  window.addEventListener('pointerup',     onRelease, { passive: true });
+  window.addEventListener('pointercancel', onRelease, { passive: true });
+
+  // ─── Lifecycle Handlers ───────────────────────────────
+
+  // Escape key: close sidebar
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && isOpen() && !_sbAnimating) closeSidebar();
+  }, { passive: true });
+
+  // Visibility change: cancel RAF loops when tab is hidden
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    if (rafId      !== null) { cancelAnimationFrame(rafId);      rafId      = null; }
+    if (springRafId !== null) { cancelAnimationFrame(springRafId); springRafId = null; springLast = 0; }
+    if (state === S.DRAGGING || state === S.DETECTING) abortDrag();
+  }, { passive: true });
+
+  // Resize: recalculate sidebar width cleanly — only when not dragging
+  let _resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(() => {
+      if (state === S.IDLE) sbW = sidebar.offsetWidth || 280;
+    }, 150);
+  }, { passive: true });
+}
+
+initSidebarSwipe();
 // Init UI state on load
 loadCustomAreas();
 if (localStorage.getItem('isAdmin') === 'true') renderLoggedState();
