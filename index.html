@@ -914,10 +914,20 @@ let authStateUser = null;
 let messagingLoadPromise = null;
 let pushRegistrationComplete = false;
 let pushSetupInProgress = false;
+let pushSetupPromise = null;
+let writeInFlight = null;
+let currentPushToken = null;
+let pendingToken = null;
+let authEpoch = 0;
+let autoAttempted = false;
+let loggingOut = false;
 let lastPushFailureReason = null;
 let promptSuppressed = false;
 let permissionRequestInProgress = false;
+let permissionRequestSeq = 0;
+let permissionPromptTimer = null;
 let pushUiListenersReady = false;
+const pushTrace = [];
 const db = firebase.firestore();
 
 function loadFirebaseAuth() {
@@ -977,6 +987,18 @@ function isAdminSession() {
   return !!authStateUser && authStateUser.uid === ADMIN_UID;
 }
 
+function withTimeout(promise, milliseconds) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error('Operation timed out');
+      error.name = 'TimeoutError';
+      reject(error);
+    }, milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 let earlyServiceWorkerRegistrationPromise = null;
 
 function ensureMessagingServiceWorker() {
@@ -1001,6 +1023,12 @@ function ensureMessagingServiceWorker() {
 
 function applyAuthState(user) {
   const adminUser = user && user.uid === ADMIN_UID ? user : null;
+  const previousUid = authStateUser?.uid || null;
+  const nextUid = adminUser?.uid || null;
+  if (previousUid !== nextUid) {
+    authEpoch++;
+    autoAttempted = false;
+  }
   authStateUser = adminUser;
   const form = document.getElementById('sbLoginForm');
   const logged = document.getElementById('sbLoggedState');
@@ -1012,7 +1040,7 @@ function applyAuthState(user) {
 
   if (!adminUser) {
     pushRegistrationComplete = false;
-    pushSetupInProgress = false;
+    autoAttempted = false;
     lastPushFailureReason = null;
     promptSuppressed = false;
     permissionRequestInProgress = false;
@@ -1027,7 +1055,7 @@ function applyAuthState(user) {
     if (Notification.permission === 'default') {
       setPushStatus('disabled', 'permission_default');
     } else if (Notification.permission === 'granted') {
-      enableAdminPush();
+      startPushSetup('auth');
     } else {
       setPushStatus('permission_denied');
     }
@@ -1608,53 +1636,86 @@ async function doLogin() {
   }
 }
 
-async function removeCurrentPushToken() {
-  if (!isAdminSession() || !authStateUser || !('Notification' in window)
-      || Notification.permission !== 'granted') return;
-
-  let messaging = null;
+async function removeCurrentPushToken(token) {
+  if (!token || !authStateUser) return false;
   try {
-    messaging = await loadFirebaseMessaging();
+    await db.collection('fcm_tokens').doc(authStateUser.uid).set({
+      tokens: firebase.firestore.FieldValue.arrayRemove(token),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return true;
   } catch (e) {
-    console.warn('FCM cleanup failed:', e?.code || e?.name || 'UnknownError');
-    return;
-  }
-
-  try {
-    let token = null;
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.getRegistration();
-      if (registration) {
-        const readyRegistration = await navigator.serviceWorker.ready;
-        token = await messaging.getToken({
-          vapidKey: VAPID_KEY,
-          serviceWorkerRegistration: readyRegistration || registration
-        });
-      }
-    }
-    if (token) {
-      await db.collection('fcm_tokens').doc(authStateUser.uid).set({
-        tokens: firebase.firestore.FieldValue.arrayRemove(token),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    }
-  } catch (e) {
-    console.warn('FCM cleanup failed:', e?.code || e?.name || 'UnknownError');
-  }
-
-  try {
-    await messaging.deleteToken();
-  } catch (e) {
-    console.warn('FCM token deletion failed:', e?.code || e?.name || 'UnknownError');
+    tracePush('logout_remove_error', e?.code || e?.name || 'UnknownError');
+    return false;
   }
 }
 
 async function doLogout() {
+  authEpoch++;
+  loggingOut = true;
   try {
     const authInstance = auth || await loadFirebaseAuth();
-    await removeCurrentPushToken();
+    const waitForSetup = Promise.allSettled(
+      [pushSetupPromise, writeInFlight].filter(Boolean)
+    );
+    const waitResult = await Promise.race([
+      waitForSetup,
+      new Promise(resolve => setTimeout(() => resolve('timeout'), 8000))
+    ]);
+    if (waitResult === 'timeout') tracePush('logout_wait_timeout');
+
+    const token = currentPushToken || pendingToken || null;
+    if (!token) {
+      tracePush('logout_no_token');
+    } else {
+      await removeCurrentPushToken(token);
+    }
+    try {
+      await withTimeout(db.waitForPendingWrites(), 8000);
+    } catch (_) {
+      tracePush('logout_pending_writes_timeout');
+    }
+    if (token) {
+      try {
+        const tokenRef = db.collection('fcm_tokens').doc(authStateUser.uid);
+        let verified = false;
+        const firstRead = await withTimeout(tokenRef.get({ source: 'server' }), 5000);
+        const firstTokens = Array.isArray(firstRead.data()?.tokens)
+          ? firstRead.data().tokens : [];
+        verified = !firstTokens.includes(token);
+        if (verified) {
+          tracePush('logout_token_removed_verified');
+        } else {
+          tracePush('logout_token_still_present');
+          await removeCurrentPushToken(token);
+          await withTimeout(db.waitForPendingWrites(), 3000);
+          const secondRead = await withTimeout(tokenRef.get({ source: 'server' }), 5000);
+          const secondTokens = Array.isArray(secondRead.data()?.tokens)
+            ? secondRead.data().tokens : [];
+          if (!secondTokens.includes(token)) tracePush('logout_token_removed_verified');
+        }
+      } catch (e) {
+        tracePush('logout_verify_failed', e?.code || e?.name || 'UnknownError');
+      }
+    }
+
+    if ('Notification' in window && Notification.permission === 'granted'
+        && 'serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) {
+          const messaging = await loadFirebaseMessaging();
+          await messaging.deleteToken();
+          tracePush('logout_delete_token_ok');
+        }
+      } catch (e) {
+        tracePush('logout_delete_token_error', e?.code || e?.name || 'UnknownError');
+      }
+    }
+
+    currentPushToken = null;
+    pendingToken = null;
     pushRegistrationComplete = false;
-    pushSetupInProgress = false;
     lastPushFailureReason = null;
     promptSuppressed = false;
     permissionRequestInProgress = false;
@@ -1663,10 +1724,12 @@ async function doLogout() {
     document.getElementById('aPass').value = '';
     closeAdminDashboard();
   } catch (error) {
-    console.error('Firebase sign-out failed:', error);
+    console.error('Firebase sign-out failed:', error?.code || error?.name || 'UnknownError');
     const err = document.getElementById('aErr');
     err.textContent = 'تعذّر تسجيل الخروج. حاول مجدداً.';
     err.style.display = 'block';
+  } finally {
+    loggingOut = false;
   }
 }
 
@@ -1971,6 +2034,33 @@ function setPushStatus(state, reason) {
   }
 }
 
+function tracePush(step, value) {
+  const entry = {
+    time: performance.now(),
+    step,
+    value: value === undefined ? '' : String(value)
+  };
+  if (!pushTrace.length) {
+    const chromeMatch = (navigator.userAgent || '').match(/(?:Chrome|CriOS)\/(\d+)/i);
+    entry.userActivation = !!navigator.userActivation?.isActive;
+    entry.visibility = document.visibilityState;
+    entry.focus = document.hasFocus();
+    entry.chromeMajor = chromeMatch ? chromeMatch[1] : 'n/a';
+  }
+  pushTrace.push(entry);
+  if (pushTrace.length > 30) pushTrace.shift();
+}
+
+function formatPushTrace() {
+  if (!pushTrace.length) return 'pushTrace: لا توجد أحداث بعد';
+  return pushTrace.map(item =>
+    `${item.time.toFixed(1)}ms ${item.step}${item.value ? `=${item.value}` : ''}`
+      + (item.userActivation !== undefined
+        ? ` [activation=${item.userActivation},visibility=${item.visibility},focus=${item.focus},chrome=${item.chromeMajor}]`
+        : '')
+  ).join('\n');
+}
+
 function getPromptSuppressedSteps() {
   const browser = getNotificationBrowserName();
   if (browser === 'Chrome') {
@@ -1981,6 +2071,9 @@ function getPromptSuppressedSteps() {
 
 function refreshPushStatus() {
   if (!isAdminSession()) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    autoAttempted = false;
+  }
   if (permissionRequestInProgress) {
     setPushStatus('permission_pending');
   } else if (promptSuppressed && 'Notification' in window && Notification.permission === 'default') {
@@ -2021,14 +2114,29 @@ function refreshPushActivationBanner() {
   if (button) button.disabled = !shouldShow || denied || permissionRequestInProgress;
 }
 
+function maybeCompletePushSetup(source) {
+  if (!isAdminSession() || loggingOut) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    autoAttempted = false;
+    return;
+  }
+  startPushSetup(source);
+}
+
 function setupPushUiListeners() {
   if (pushUiListenersReady) return;
   pushUiListenersReady = true;
-  document.addEventListener('visibilitychange', refreshPushUi);
+  document.addEventListener('visibilitychange', () => {
+    maybeCompletePushSetup('visibility');
+    refreshPushUi();
+  });
   if (navigator.permissions?.query) {
     navigator.permissions.query({ name: 'notifications' }).then(permission => {
       if (typeof permission.addEventListener === 'function') {
-        permission.addEventListener('change', refreshPushUi);
+        permission.addEventListener('change', () => {
+          maybeCompletePushSetup('change');
+          refreshPushUi();
+        });
       }
     }).catch(() => {});
   }
@@ -2100,22 +2208,38 @@ async function updatePushDiagnostics() {
     `top===window=${window.top === window ? 'true' : 'false'}`,
     `serviceWorker=${serviceWorker}`,
     `pushManager.permissionState=${pushPermission}`,
-    `browser=${getNotificationBrowserName()}`
+    `browser=${getNotificationBrowserName()}`,
+    formatPushTrace()
   ].join(' · ');
 }
 
 async function reenablePush() {
-  if (!isAdminSession()) return;
+  const mySeq = ++permissionRequestSeq;
+  tracePush('reenable_entered');
+  const adminSession = isAdminSession();
+  tracePush('is_admin_session', adminSession ? 'true' : 'false');
+  if (!adminSession) {
+    tracePush('early_return', 'not_admin');
+    refreshPushUi();
+    return;
+  }
+  tracePush('notification_api', 'Notification' in window ? 'present' : 'absent');
   if (!('Notification' in window)) {
+    tracePush('permission_before', 'unavailable');
+    tracePush('early_return', 'notification_unsupported');
     lastPushFailureReason = 'NotificationUnsupported';
     setPushStatus('disabled', 'NotificationUnsupported');
     refreshPushUi();
     return;
   }
+  tracePush('permission_before', Notification.permission);
   if (Notification.permission === 'granted') {
-    return enableAdminPush();
+    tracePush('early_return', 'already_granted');
+    return startPushSetup('manual');
   }
   if (Notification.permission === 'denied') {
+    tracePush('early_return', 'already_denied');
+    autoAttempted = false;
     lastPushFailureReason = 'permission_denied';
     setPushStatus('permission_denied');
     refreshPushUi();
@@ -2123,14 +2247,43 @@ async function reenablePush() {
   }
   permissionRequestInProgress = true;
   setPushStatus('permission_pending');
+  tracePush('before_request_permission');
   refreshPushUi();
-  try {
-    const permission = await Notification.requestPermission();
+  permissionPromptTimer = setTimeout(() => {
+    if (mySeq !== permissionRequestSeq) return;
     permissionRequestInProgress = false;
-    if (permission === 'granted') {
-      promptSuppressed = false;
-      return enableAdminPush();
-    }
+    tracePush('permission_prompt_timeout');
+    refreshPushUi();
+  }, 20000);
+  let permission;
+  try {
+    permission = await Notification.requestPermission();
+  } catch (e) {
+    if (mySeq !== permissionRequestSeq) return;
+    clearTimeout(permissionPromptTimer);
+    permissionPromptTimer = null;
+    permissionRequestInProgress = false;
+    const reason = e?.code || e?.name || 'PermissionRequestFailed';
+    tracePush('request_permission_error', reason);
+    lastPushFailureReason = reason;
+    setPushStatus('disabled', reason);
+    console.warn('Notification permission request failed:', reason);
+    refreshPushUi();
+    return;
+  }
+  if (mySeq !== permissionRequestSeq) return;
+  clearTimeout(permissionPromptTimer);
+  permissionPromptTimer = null;
+  permissionRequestInProgress = false;
+  tracePush('request_permission_result', permission);
+
+  if (permission === 'granted') {
+    promptSuppressed = false;
+    return startPushSetup('late_permission_result');
+  }
+
+  try {
+    autoAttempted = false;
     if (permission === 'denied') {
       promptSuppressed = false;
       lastPushFailureReason = 'permission_denied';
@@ -2141,72 +2294,77 @@ async function reenablePush() {
       setPushStatus('prompt_suppressed');
     }
   } catch (e) {
-    permissionRequestInProgress = false;
-    const reason = e?.code || e?.name || 'PermissionRequestFailed';
+    const reason = e?.code || e?.name || 'PermissionResultHandlingFailed';
+    tracePush('permission_result_handling_error', reason);
     lastPushFailureReason = reason;
     setPushStatus('disabled', reason);
-    console.warn('Notification permission request failed:', reason);
+    console.warn('Notification permission result handling failed:', reason);
   }
   refreshPushUi();
 }
 
-async function enableAdminPush() {
-  const user = authStateUser;
-  if (!isAdminSession() || !user) return;
-  if (pushSetupInProgress) return;
-  if (!('Notification' in window)) {
-    pushSetupInProgress = false;
-    lastPushFailureReason = 'NotificationUnsupported';
-    setPushStatus('disabled', 'NotificationUnsupported');
-    refreshPushUi();
-    return;
-  }
-  if (Notification.permission !== 'granted') {
-    pushSetupInProgress = false;
-    lastPushFailureReason = Notification.permission === 'default' ? 'permission_default' : 'permission_denied';
-    if (Notification.permission === 'default') {
-      setPushStatus('disabled', 'permission_default');
-    } else {
-      setPushStatus('permission_denied');
-    }
-    refreshPushUi();
-    return;
-  }
+function startPushSetup(source) {
+  if (pushSetupInProgress) return pushSetupPromise;
+  if (pushRegistrationComplete) return Promise.resolve();
+  if (!isAdminSession() || loggingOut) return Promise.resolve();
+  if (!('Notification' in window) || Notification.permission !== 'granted') return Promise.resolve();
+  if (source !== 'manual' && autoAttempted) return Promise.resolve();
 
-  pushRegistrationComplete = false;
   pushSetupInProgress = true;
+  const epoch = authEpoch;
+  if (source !== 'manual') autoAttempted = true;
+  pushSetupPromise = runSetup(epoch).finally(() => {
+    pushSetupInProgress = false;
+    pushSetupPromise = null;
+  });
+  return pushSetupPromise;
+}
+
+async function runSetup(epoch) {
+  const user = authStateUser;
+  const stale = () => epoch !== authEpoch || !isAdminSession() || loggingOut;
+  pushRegistrationComplete = false;
   setPushStatus('pending');
   try {
-    if (!('serviceWorker' in navigator)) {
+    if (!user || !('serviceWorker' in navigator)) {
       const error = new Error();
-      error.name = 'ServiceWorkerUnsupported';
+      error.name = !('serviceWorker' in navigator)
+        ? 'ServiceWorkerUnsupported' : 'AdminSessionUnavailable';
       throw error;
     }
-    const existingRegistration = await navigator.serviceWorker.getRegistration();
-    const serviceWorkerRegistration = existingRegistration
-      || await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    const readyRegistration = await navigator.serviceWorker.ready;
+    let serviceWorkerRegistration = await navigator.serviceWorker.getRegistration();
+    if (!serviceWorkerRegistration) {
+      serviceWorkerRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    }
+    if (stale()) return;
+    const readyRegistration = await withTimeout(navigator.serviceWorker.ready, 15000);
+    if (stale()) return;
     const messaging = await loadFirebaseMessaging();
-    const token = await messaging.getToken({
+    if (stale()) return;
+    const token = await withTimeout(messaging.getToken({
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: readyRegistration || serviceWorkerRegistration
-    });
-    if (!token) {
-      pushSetupInProgress = false;
-      lastPushFailureReason = 'TokenUnavailable';
-      setPushStatus('disabled', 'TokenUnavailable');
-      refreshPushUi();
+    }), 15000);
+    if (stale()) {
+      try { await messaging.deleteToken(); } catch (_) {}
       return;
     }
+    currentPushToken = token || null;
+    pendingToken = token || null;
+    if (!token) throw Object.assign(new Error(), { name: 'TokenUnavailable' });
+
     const tokenRef = db.collection('fcm_tokens').doc(user.uid);
     const doc = await tokenRef.get();
+    if (stale()) {
+      try { await messaging.deleteToken(); } catch (_) {}
+      return;
+    }
     const stored = doc.exists ? (doc.data() || {}) : {};
     const currentTokens = Array.isArray(stored.tokens)
       ? stored.tokens.filter(value => typeof value === 'string' && value.trim())
       : [];
     const legacyTokens = typeof stored.token === 'string' && stored.token.trim()
-      ? [stored.token]
-      : [];
+      ? [stored.token] : [];
     const mergedTokens = [...new Set([token, ...legacyTokens, ...currentTokens])];
     const tokenUpdate = {
       uid: user.uid,
@@ -2215,24 +2373,27 @@ async function enableAdminPush() {
     };
     if (mergedTokens.length <= 10) {
       const additions = mergedTokens.filter(value => !currentTokens.includes(value));
-      tokenUpdate.tokens = additions.length
-        ? firebase.firestore.FieldValue.arrayUnion(...additions)
-        : firebase.firestore.FieldValue.arrayUnion(token);
+      tokenUpdate.tokens = firebase.firestore.FieldValue.arrayUnion(...(additions.length ? additions : [token]));
     } else {
       tokenUpdate.tokens = mergedTokens.slice(0, 10);
     }
-    if (typeof stored.token === 'string') {
-      tokenUpdate.token = firebase.firestore.FieldValue.delete();
+    if (typeof stored.token === 'string') tokenUpdate.token = firebase.firestore.FieldValue.delete();
+    if (stale()) return;
+    writeInFlight = tokenRef.set(tokenUpdate, { merge: true });
+    try {
+      await writeInFlight;
+    } finally {
+      writeInFlight = null;
     }
-    await tokenRef.set(tokenUpdate, { merge: true });
-    pushSetupInProgress = false;
+    if (stale()) return;
+    pendingToken = null;
     pushRegistrationComplete = true;
     lastPushFailureReason = null;
     promptSuppressed = false;
     setPushStatus('enabled');
     refreshPushUi();
   } catch (e) {
-    pushSetupInProgress = false;
+    if (stale()) return;
     const reason = e?.code || e?.name || 'UnknownError';
     lastPushFailureReason = reason;
     setPushStatus('disabled', reason);
