@@ -2024,7 +2024,7 @@ function setPushStatus(state, reason) {
   } else if (state === 'permission_pending') {
     status.textContent = 'الإشعارات: جاري طلب الإذن…';
   } else if (state === 'prompt_suppressed') {
-    status.textContent = 'الإشعارات: المتصفح لم يعرض نافذة السماح.';
+    status.textContent = 'الإشعارات: لم يتم تأكيد الإذن بعد. اضغط التفعيل وانتبه لطلب الإذن الصغير، أو افتح إعدادات الموقع من الأيقونة بجوار شريط العنوان ثم الإشعارات.';
   } else if (state === 'pending') {
     status.textContent = 'الإشعارات: جاري التفعيل...';
   } else if (state === 'permission_denied') {
@@ -2064,7 +2064,7 @@ function formatPushTrace() {
 function getPromptSuppressedSteps() {
   const browser = getNotificationBrowserName();
   if (browser === 'Chrome') {
-    return 'Chrome: ⋮ ← الإعدادات ← إعدادات الموقع الإلكتروني ← الإشعارات ← عطّل «استخدام رسائل أقل تدخلاً» ثم حدّث الصفحة واضغط تفعيل. قد يحجب كروم الطلب مؤقتاً لعدة أيام، فجرّب متصفحاً آخر.';
+    return 'Chrome: اضغط تفعيل وانتبه لنافذة الإذن الصغيرة (قد تظهر أسفل الشاشة)، أو اضغط الأيقونة بجوار شريط العنوان ← الإشعارات ← سماح. وإن اختفت فراجع ⋮ ← الإعدادات ← إعدادات الموقع الإلكتروني ← الإشعارات.';
   }
   return `${browser === 'Opera' || browser === 'Samsung' ? browser : 'المتصفح'}: افتح إعدادات الموقع من قائمة المتصفح ← الإشعارات ← سماح، ثم حدّث الصفحة.`;
 }
@@ -2102,7 +2102,7 @@ function refreshPushActivationBanner() {
   const title = document.getElementById('pushBannerTitle');
   const steps = document.getElementById('pushBannerSteps');
   if (title) title.textContent = suppressed
-    ? '🔔 المتصفح لم يعرض نافذة السماح.'
+    ? '🔔 لم يتم تأكيد إذن الإشعارات بعد.'
     : '🔔 الإشعارات مقفولة. اضغط لتفعيلها';
   if (steps) steps.textContent = suppressed
     ? getPromptSuppressedSteps()
@@ -2271,7 +2271,13 @@ async function reenablePush() {
     refreshPushUi();
     return;
   }
-  if (mySeq !== permissionRequestSeq) return;
+  if (mySeq !== permissionRequestSeq) {
+    tracePush('stale_permission_result', Notification.permission);
+    if (Notification.permission === 'granted') {
+      startPushSetup('late_permission_result');
+    }
+    return;
+  }
   clearTimeout(permissionPromptTimer);
   permissionPromptTimer = null;
   permissionRequestInProgress = false;
@@ -2279,7 +2285,7 @@ async function reenablePush() {
 
   if (permission === 'granted') {
     promptSuppressed = false;
-    return startPushSetup('late_permission_result');
+    return startPushSetup('manual');
   }
 
   try {
@@ -2396,6 +2402,7 @@ async function runSetup(epoch) {
     if (stale()) return;
     const reason = e?.code || e?.name || 'UnknownError';
     lastPushFailureReason = reason;
+    tracePush('enable_admin_push_error', reason);
     setPushStatus('disabled', reason);
     console.warn('FCM setup failed:', reason);
     refreshPushUi();
